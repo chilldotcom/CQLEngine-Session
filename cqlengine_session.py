@@ -2,17 +2,21 @@
 class _SessionedClass(object):
     """Wraps a cqlengine class for use in a Session."""
 
-    def __init__(self, wrapped_class, **kwargs):
+    def __init__(self, session, wrapped_class, **kwargs):
+        self.session = session
         self.wrapped_class = wrapped_class
-        for name, column in wrapped_class._primary_keys.iteritems():
+#        for name, column in wrapped_class._primary_keys.iteritems():
+        for name, column in wrapped_class._columns.iteritems():
             if name not in kwargs:
                 if column.default:
                     if callable(column.default):
                         kwargs[name] = column.default()
                     else:
                         kwargs[name] = column.default
-                else:
+                elif name in wrapped_class._primary_keys:
                     raise ValueError(u"Can't create {} without providing primary key {}".format(wrapped_class, name))
+                else:
+                    kwargs[name] = None
         for k, v in kwargs.iteritems():
             object.__setattr__(self, k, v)
         self.kwargs = kwargs
@@ -24,6 +28,9 @@ class Session(object):
 
     def commit(self):
         """Write all pending changes to cqlengine."""
+        for obj in self.creates:
+            wrapped_obj = obj.wrapped_class.create(**{k: getattr(obj, k) for k in obj.wrapped_class._columns.keys()})
+            wrapped_obj.save()
 
     def create(self, model_class, **kwargs):
         """Create instance of model_class and return an identity mapped handle.
@@ -33,9 +40,45 @@ class Session(object):
         returns identity map handle to instance.
 
         """
-        item = _SessionedClass(model_class, **kwargs)
+        item = _SessionedClass(self, model_class, **kwargs)
         self.creates.add(item)
         return item
+
+    def load(self, *args, **kwargs):
+        """Fetch row from Cassandra and returned wrapped object."""
+        inventory = kwargs.get('inventory')
+        keys = kwargs.get('keys')
+        if len(args) > 2:
+            raise TypeError("load() takes at most 2 arguments ({} given)".format(len(args)))
+        if len(args) == 2:
+            model_class = args[0]
+            keys = [args[1]]
+        elif len(args) == 1:
+            #if isinstance(args[0], _SessionedClass):
+                #xxxx
+            #else:
+                # _handle = args[0]
+                # model_class = _handle.model_class
+                # keys = [_handle.key]
+            raise NotImplementedError('need to be able to load with session.handle')
+        # Get the object from cqlengine.
+        # (note: I don't like that we are copying from cqlengine instead of
+        # just fetching on our own.  I don't like that cqlengine gets all the
+        # data yet we may want to only get some.
+        # TODO: Do we check if it is already loaded, and thus spare a second
+        # load?  Or do we assume that the second load is naively requested
+        # and only fetch it if the data is not already in the identity map?
+        # also, if data has already been set, and then we load, are we
+        # sure to preserve the pre-existing data?
+        if len(keys) > 1:
+            raise NotImplementedError('can only handle single key primary keys')
+        if len(model_class._primary_keys) > 1:
+            raise NotImplementedError('can only handle single primary key objects')
+        primary_key_name, _ = list(model_class._primary_keys.iteritems())[0]
+        primary_key = keys[0]
+        obj = model_class.objects(**{primary_key_name: primary_key}).get()
+        wrapped_obj = _SessionedClass(self, model_class, **{k: getattr(obj, k) for k in model_class._columns.keys()})
+        return wrapped_obj
 
 
 class sessionmaker(object):
