@@ -3,33 +3,54 @@ class _SessionedClass(object):
     """Wraps a cqlengine class for use in a Session."""
 
     def __init__(self, session, wrapped_class, **kwargs):
-        self.session = session
-        self.wrapped_class = wrapped_class
-#        for name, column in wrapped_class._primary_keys.iteritems():
+        # Because _SessionClass overrides __setattr__, if you want to set
+        # non-cqlengine-column attributes, use object.__setattr__
+        object.__setattr__(self, 'session', session)
+        object.__setattr__(self, 'wrapped_class', wrapped_class)
         for name, column in wrapped_class._columns.iteritems():
-            if name not in kwargs:
+            try:
+                kwarg_val = kwargs[name]
+                object.__setattr__(self, name, kwarg_val)
+            except KeyError:
                 if column.default:
                     if callable(column.default):
-                        kwargs[name] = column.default()
+                        object.__setattr__(self, name, column.default())
                     else:
-                        kwargs[name] = column.default
+                        object.__setattr__(self, name, column.default)
                 elif name in wrapped_class._primary_keys:
                     raise ValueError(u"Can't create {} without providing primary key {}".format(wrapped_class, name))
                 else:
-                    kwargs[name] = None
-        for k, v in kwargs.iteritems():
-            object.__setattr__(self, k, v)
-        self.kwargs = kwargs
+                    object.__setattr__(self, name, None)
+
+    def __setattr__(self, name, value):
+        # Let's not create a dirty dict until a write is made.  We made load
+        # massive numbers of these objects and it would be good if the
+        # overhead of doing that was minimal.
+        try:
+            self.dirties[name] = value
+        except AttributeError:
+            object.__setattr__(self, 'dirties', {name: value})
+        self.session.dirties.add(self)
+        object.__setattr__(self, name, value)
 
 class Session(object):
 
     def __init__(self):
         self.creates = set()
+        self.dirties = set()
 
     def commit(self):
         """Write all pending changes to cqlengine."""
         for obj in self.creates:
             wrapped_obj = obj.wrapped_class.create(**{k: getattr(obj, k) for k in obj.wrapped_class._columns.keys()})
+            wrapped_obj.save()
+        for obj in (o for o in self.dirties if o not in self.creates):
+            # TODO: want to do blind writes, but I don't have that know-how yet.
+            key_name = obj.wrapped_class._primary_keys.keys()[0]
+            key = getattr(obj, key_name)
+            wrapped_obj = obj.wrapped_class.objects(**{key_name: key}).get()
+            for name, value in obj.dirties.iteritems():
+                setattr(wrapped_obj, name, value)
             wrapped_obj.save()
 
     def create(self, model_class, **kwargs):
