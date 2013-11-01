@@ -33,18 +33,26 @@ class Session(object):
     def __init__(self):
         self.instances_by_class = {}
         self.creates = set()
-        self.updates = set()
         self.deletes = set()
 
     def save(self):
+        updates = set()
+        for model_class, by_key in self.instances_by_class.iteritems():
+            for key, instance in by_key.iteritems():
+                for name, manager in instance._values.iteritems():
+                    if manager.changed:
+                        updates.add(instance)
+                        break
+
+        print 'updates {}'.format(updates)
         creates = self.creates - self.deletes
-        updates = self.updates - self.creates - self.deletes
+        updates = updates - self.creates - self.deletes
         with BatchQuery() as batch:
             for create in creates:
                 values = {n: getattr(create, n) for n in create._columns.keys()}
                 create.__class__.batch(batch).create(**values)
             for update in updates:
-                raise NotImplementedError
+                update.batch(batch).update()
             for delete in self.deletes:
                 raise NotImplementedError
 
@@ -53,8 +61,6 @@ class SessionModelMetaClass(ModelMetaClass):
         # Look up this object in the identity map, if it exists return it, if
         # not, instantiate it, add it to the identity map, and return it.
         # xxx - session only works with single-primary key objects at present.
-        print 'session model meta class __call__'
-        print '{} call {}'.format(cls, values)
         key_name = cls._primary_keys.keys()[0]
         try:
             key = values[key_name]
@@ -104,7 +110,6 @@ class SessionModel(BaseModel):
     # session know to insert the object.
     @classmethod
     def session_create(cls, **kwargs):
-        print 'SessionModel.create'
         extra_columns = set(kwargs.keys()) - set(cls._columns.keys())
         if extra_columns:
             raise ValidationError("Incorrect columns passed: {}".format(extra_columns))
