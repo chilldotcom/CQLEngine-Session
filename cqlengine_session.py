@@ -44,7 +44,6 @@ class Session(object):
                         updates.add(instance)
                         break
 
-        print 'updates {}'.format(updates)
         creates = self.creates - self.deletes
         updates = updates - self.creates - self.deletes
         with BatchQuery() as batch:
