@@ -1,7 +1,7 @@
 from setuptools import setup, find_packages
 
 setup(
-    name='cqlengine',
+    name='CQLEngine-Session',
     version='0.1',
     description="Session with identity map for cqlengine",
     long_description="Session with identity map for cqlengine",
@@ -16,10 +16,13 @@ setup(
     ],
     keywords='cassandra,cql,orm',
     install_requires = ['cqlengine'],
+    py_modules=[
+        'cqlengine_session',
+    ],
     author='Michael Cyrulnik',
     author_email='michael@chill.com',
     url='https://github.com/chilldotcom/CQLEngine-Session',
-    license='BSD',
-    packages=find_packages(),
-    include_package_data=True,
+    license='BSD'#,
+    #packages=find_packages(),
+    #include_package_data=True,
 )

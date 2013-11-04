@@ -84,6 +84,7 @@ class SessionModelMetaClass(ModelMetaClass):
                         continue
                     # Get the value manager for the attribute.
                     manager = instance._values[column_name]
+                    print manager
                     # If the value is unset, set the value.
                     # xxx how do we know if the value has been set?
                     setattr(instance, column_name, value)
