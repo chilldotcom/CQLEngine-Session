@@ -1,32 +1,62 @@
-
 import threading
 from cqlengine.exceptions import ValidationError
 from cqlengine.models import BaseModel, ModelMetaClass
 from cqlengine.query import BatchQuery
 
-SESSION = threading.local()
 
-def get_session(clear=False, create_if_missing=True):
-    """Gets the global session, making a new one if one does not already exist.
+class SessionManager(object):
+    def get_session(self):
+        """Return current session for this context."""
+        raise NotImplementedError
 
-    clear -- If True, make a new global session and return it
-    create_if_missing -- If False, will return None if session does not exist.
+    def set_session(self, session):
+        """Make the given session the current session for this context."""
+        raise NotImplementedError
 
-    """
-    session = None
-    if not clear:
+
+class ThreadLocalSessionManager(SessionManager):
+    def __init__(self):
+        self.storage = threading.local()
+
+    def get_session(self):
         try:
-            session = SESSION.value
+            return self.storage.session
         except AttributeError:
-            pass
-    if not session and create_if_missing:
+            return None
+
+    def set_session(self, session):
+        self.storage.session = session
+
+
+SESSION_MANAGER = ThreadLocalSessionManager()
+
+
+def set_session_manager(manager):
+    global SESSION_MANAGER
+    SESSION_MANAGER = manager
+
+
+def clear():
+    """Empty the current session"""
+    # xxx what happens to the existing id-map objects?  this is dangerous.
+    # (also, the dev is not expected to call this.)
+    SESSION_MANAGER.set_session(None)
+
+
+def save():
+    "Write all pending changes from session to Cassandra."
+    session = SESSION_MANAGER.get_session()
+    if session is not None:
+        session.save()
+
+
+def get_session(create_if_missing=True):
+    session = SESSION_MANAGER.get_session()
+    if session is None:
         session = Session()
-        SESSION.value = session
+        SESSION_MANAGER.set_session(session)
     return session
 
-def save(*args, **kwargs):
-    "Write all pending changes from session to Cassandra."
-    get_session().save(*args, **kwargs)
 
 class Session(object):
     """Identity map objects and support for implicit batch save."""
@@ -54,6 +84,7 @@ class Session(object):
                 update.batch(batch).update()
             for delete in self.deletes:
                 raise NotImplementedError
+
 
 class SessionModelMetaClass(ModelMetaClass):
     def __call__(cls, **values):

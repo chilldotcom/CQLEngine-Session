@@ -6,7 +6,7 @@ from cqlengine import columns
 from cqlengine.connection import setup
 from cqlengine.management import create_keyspace, delete_keyspace, sync_table
 from cqlengine.query import DoesNotExist
-from cqlengine_session import get_session, save, SessionModel
+from cqlengine_session import clear, save, SessionModel
 
 
 def make_todo_model():
@@ -37,7 +37,7 @@ class BaseTestCase(unittest.TestCase):
     def setUp(self):
         keyspace = 'testkeyspace{}'.format(str(uuid.uuid1()).replace('-', ''))
         self.keyspace = keyspace
-        get_session(clear=True)
+        clear()
         # Configure cqlengine's global connection pool.
         setup('localhost:9160', default_keyspace=keyspace)
         create_keyspace(keyspace)
@@ -87,7 +87,7 @@ class BasicTestCase(BaseTestCase):
         self.assertTrue(found is todo)
 
         # Clear the session
-        get_session(clear=True)
+        clear()
 
         found = self.Todo.objects(uuid=todo_key).get()
         self.assertFalse(found is todo)
@@ -104,7 +104,7 @@ class BasicTestCase(BaseTestCase):
         save()
 
         # Get a new session.
-        get_session(clear=True)
+        clear()
         # Load the object into the session.
         todo = self.Todo.objects(uuid=todo_key).get()
         todo.title = u'new title'
@@ -126,7 +126,7 @@ class BasicTestCase(BaseTestCase):
 
         old_todo = todo
 
-        get_session(clear=True)
+        clear()
         todo = self.Todo.objects(uuid=todo_key).get()
         self.assertFalse(old_todo is todo)
         self.assertEqual(todo.uuid, todo_key)
@@ -136,7 +136,7 @@ class BasicTestCase(BaseTestCase):
         old_todo = todo
 
         # Test a blind update.
-        get_session(clear=True)
+        clear()
         todo = self.Todo(uuid=todo_key)
         self.assertFalse(old_todo is todo)
         todo.title = u'new new title'
@@ -144,7 +144,7 @@ class BasicTestCase(BaseTestCase):
         old_todo = todo
         save()
 
-        get_session(clear=True)
+        clear()
         todo = self.Todo.objects(uuid=todo_key).get()
         self.assertFalse(old_todo is todo)
         self.assertEqual(todo.uuid, todo_key)
@@ -162,7 +162,7 @@ class BasicTestCase(BaseTestCase):
         save()
 
         # Get a new session.
-        get_session(clear=True)
+        clear()
         # Load the object into the session.
         todo = self.Todo.objects(uuid=todo_key).get()
 
@@ -177,7 +177,7 @@ class BasicTestCase(BaseTestCase):
         todo = self.Todo.objects(uuid=todo_key).get()
         self.assertEqual(todo.title, u'new new title')
         save()
-        get_session(clear=True)
+        clear()
         todo = self.Todo.objects(uuid=todo_key).get()
         self.assertEqual(todo.title, u'new new title')
 
@@ -191,7 +191,7 @@ class BasicTestCase(BaseTestCase):
         save()
 
         # Get a new session.
-        get_session(clear=True)
+        clear()
         # Get a blind handle to the object.
         todo = self.Todo(uuid=todo_key)
         # Change a value.
@@ -201,7 +201,7 @@ class BasicTestCase(BaseTestCase):
         self.assertTrue(todo is load_todo)
         self.assertEqual(todo.title, u'new new title')
         save()
-        get_session(clear=True)
+        clear()
         todo = self.Todo.objects(uuid=todo_key).get()
         self.assertEqual(todo.title, u'new new title')
 
