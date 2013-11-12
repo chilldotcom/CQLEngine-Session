@@ -140,7 +140,7 @@ class SessionModel(BaseModel):
 
 class IdMapMetaClass(type):
 
-    def __call__(cls, key=None):
+    def __call__(cls, key):
         """If instance is in the id-map, return it, else make and return it."""
         session = get_session()
         try:
@@ -152,10 +152,7 @@ class IdMapMetaClass(type):
         except KeyError:
             instance_by_key = {}
             session.instances_by_class[cls] = instance_by_key
-        instance = super(IdMapMetaClass, cls).__call__(key=key)
-        # Note if the key was None, the instance will autogenerate a key
-        # or raise an exception if the key-field has no default.
-        key = getattr(instance, cls.id_mapped_class._primary_keys.keys()[0])
+        instance = super(IdMapMetaClass, cls).__call__(key)
         instance_by_key[key] = instance
         return instance
 
