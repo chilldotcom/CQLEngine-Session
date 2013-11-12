@@ -1,9 +1,10 @@
+import copy
 import importlib
 import threading
 from cqlengine.exceptions import ValidationError
 from cqlengine.management import sync_table
 from cqlengine.models import BaseModel, ModelMetaClass
-from cqlengine.query import BatchQuery
+from cqlengine.query import BatchQuery, ModelQuerySet
 
 
 class SessionManager(object):
@@ -69,7 +70,7 @@ class Session(object):
         creates = set()
         for model_class, by_key in self.instances_by_class.iteritems():
             for key, instance in by_key.iteritems():
-                if instance._created:
+                if hasattr(instance, '_created') and instance._created:
                     creates.add(instance)
                 elif hasattr(instance, '_dirties'):
                     updates.add(instance)
@@ -78,8 +79,11 @@ class Session(object):
                 values = {n: getattr(create, n) for n in create.id_mapped_class._columns.keys()}
                 create.id_mapped_class.batch(batch).create(**values)
             for update in updates:
-                raise NotImplementedError
-                update.batch(batch).update()
+                cqlengine_instance = update.id_mapped_class(**{update._key_name: update._key})
+                for name, value in update._dirties.items():
+                    setattr(cqlengine_instance, name, value)
+                del update._dirties
+                cqlengine_instance.batch(batch).update()
 #            for delete in self.deletes:
 #                raise NotImplementedError
 
@@ -121,7 +125,10 @@ class SessionModelMetaClass(ModelMetaClass):
         # include them in the dict (seen as empty here).  Instead we
         # override setattr and introspect the columns at runtime, which I'm
         # not sure is better or worse at the moment.
-        stand_in = IdMapMetaClass(name, (IdMapModel,), {})
+        key_name = base._primary_keys.keys()[0]
+        stand_in = IdMapMetaClass(name, (IdMapModel,), {
+            '_key_name': key_name,
+        })
         stand_in.id_mapped_class = base
         return stand_in
 
@@ -132,6 +139,7 @@ class SessionModel(BaseModel):
     __metaclass__ = SessionModelMetaClass
 
 class IdMapMetaClass(type):
+
     def __call__(cls, key=None):
         """If instance is in the id-map, return it, else make and return it."""
         session = get_session()
@@ -145,27 +153,38 @@ class IdMapMetaClass(type):
             instance_by_key = {}
             session.instances_by_class[cls] = instance_by_key
         instance = super(IdMapMetaClass, cls).__call__(key=key)
+        # Note if the key was None, the instance will autogenerate a key
+        # or raise an exception if the key-field has no default.
+        key = getattr(instance, cls.id_mapped_class._primary_keys.keys()[0])
         instance_by_key[key] = instance
         return instance
+
+
+# this is copied from cqlengine, may need more modification..
+class QuerySetDescriptor(object):
+    def __get__(self, instance, session_class):
+        return WrappedQuerySet(instance, session_class)
 
 
 class IdMapModel(object):
 
     __metaclass__ = IdMapMetaClass
 
-    def __init__(self, key=None):
+    objects = QuerySetDescriptor()
+
+    def __init__(self, key):
         mapped_class = self.id_mapped_class
-        name, column = mapped_class._primary_keys.items()[0]
-        if key is None:
-            if column.default:
-                if callable(column.default):
-                    key = column.default()
-                else:
-                    key = column.default
-            else:
-                raise ValueError(u"Can't create {} without providing primary key {}".format(self.__class__.__name__, name))
+        #name, column = mapped_class._primary_keys.items()[0]
+        #if key is None:
+        #    if column.default:
+        #        if callable(column.default):
+        #            key = column.default()
+        #        else:
+        #            key = column.default
+        #    else:
+        #        raise ValueError(u"Can't create {} without providing primary key {}".format(self.__class__.__name__, name))
         self.key = key
-        self.promote(name, key)
+        self.promote(self._key_name, key)
 
     # Override 'create' so that it does not call the query, but does let the
     # session know to insert the object.  cqlengine create will be called
@@ -181,15 +200,26 @@ class IdMapModel(object):
         # will just do a save immediately, we want to hold off the save
         # until session.save() and we want it to not save if the session
         # never saves (is replaced by a new session aka cleared)
-        key_name = cls._primary_keys.keys()[0]
+        #key_name = cls._primary_keys.keys()[0]
+        key_name, column = cls._primary_keys.items()[0]
         try:
             key = kwargs[key_name]
         except KeyError:
             key = None
+        if key is None:
+            if column.default:
+                if callable(column.default):
+                    key = column.default()
+                else:
+                    key = column.default
+            else:
+                raise ValueError(u"Can't create {} without providing primary key {}".format(mapper_class.__name__, key_name))
 
         instance = mapper_class(key)
         instance._created = True
         for name, column in cls._columns.items():
+            if name == key_name:
+                continue
             try:
                 value = kwargs[name]
             except KeyError:
@@ -229,7 +259,7 @@ class IdMapModel(object):
             # such that the instace version need not include a redundant key
             # all all the redundant lookups thereof.  I use this here as it is
             # a more general case.
-            key_name = mapper_class.id_mapped_class._primary_keys.keys()[0]
+            key_name = mapper_class._key_name
             key = instance[key_name]
             map_instance = session.find_or_make(mapper_class, key)
             # TODO: this thwarts not wanting to just have a {} on the instance
@@ -261,4 +291,81 @@ class IdMapModel(object):
     def sync_table(cls):
         sync_table(cls.id_mapped_class)
 
-EMPTY = frozenset()
+    @classmethod
+    def _construct_instance(cls, names, values):
+        mapped_class = cls.id_mapped_class
+        key_name, column = mapped_class._primary_keys.items()[0]
+        cleaned_values = {}
+        for name, value in zip(names, values):
+            if value is not None:
+                value = mapped_class._columns[name].to_python(value)
+            cleaned_values[name] = value
+        key = cleaned_values[key_name]
+        print type(key)
+        instance = cls(key=key)
+        try:
+            dirties = instance._dirties
+        except AttributeError:
+            dirties = EMPTY
+        for name, value in cleaned_values.items():
+            if name != key_name and name not in dirties:
+                if value is not None:
+                    value = mapped_class._columns[name].to_python(value)
+                instance.promote(name, value)
+        return instance
+
+    @property
+    def _key(self):
+        return getattr(self, self._key_name)
+
+class WrappedQuerySet(ModelQuerySet):
+    def __init__(self, session_instance, session_class):
+        self._session_instance = session_instance
+        self._session_class = session_class
+
+        if not isinstance(session_class.id_mapped_class.objects, ModelQuerySet):
+            # If we run into something that is not a ModelQuerySet, let's
+            # support it.  Because we need to copy the _result_constructor
+            # method instead of providing a _construct_instance method
+            # directly, this is necessary.  Perhaps it is something we'd
+            # ask of cqlengine plugin in the future.
+            raise NotImplementedError(u'only ModelQuerySet queries are supported')
+
+        super(WrappedQuerySet, self).__init__(session_class.id_mapped_class)
+
+    def _get_result_constructor(self, names):
+        """ Returns a function that will be used to instantiate query results """
+        if not self._values_list:
+            return lambda values: self._session_class._construct_instance(names, values)
+        else:
+            columns = [self.model._columns[n] for n in names]
+            if self._flat_values_list:
+                return lambda values: columns[0].to_python(values[0])
+            else:
+                return lambda values: map(lambda (c, v): c.to_python(v), zip(columns, values))
+
+    def __deepcopy__(self, memo):
+        clone = self.__class__(self._session_instance, self._session_class)
+        for k, v in self.__dict__.items():
+            if k in ['_con', '_cur', '_result_cache', '_result_idx']: # don't clone these
+                clone.__dict__[k] = None
+            elif k == '_batch':
+                # we need to keep the same batch instance across
+                # all queryset clones, otherwise the batched queries
+                # fly off into other batch instances which are never
+                # executed, thx @dokai
+                clone.__dict__[k] = self._batch
+            else:
+                clone.__dict__[k] = copy.deepcopy(v, memo)
+
+        return clone
+
+
+# there are probably better ways to do this (because we are assuming
+# everything is a ModelQuerySet which might not be true) but here goes.
+
+class Empty(object):
+    def __contains__(self, item):
+        return False
+
+EMPTY = Empty()

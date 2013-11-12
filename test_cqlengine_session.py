@@ -58,6 +58,8 @@ class BasicTestCase(BaseTestCase):
 
         todo = self.Todo.create(title='first', text='text1')
         todo_key = todo.uuid
+        print '----------------------------------------'
+        print 'todo_key {}'.format(todo_key)
         self.assertTrue(isinstance(todo_key, uuid.UUID))
         self.assertEqual(todo.title, 'first')
         self.assertEqual(todo.text, 'text1')
@@ -83,14 +85,14 @@ class BasicTestCase(BaseTestCase):
         save()
 
         # Confirm some identity map functionality.
-        #self.assertTrue(todo is todo)
-        found = self.Todo.id_mapped_class.objects(uuid=todo_key).get()
-        #self.assertTrue(found is todo)
+        self.assertIs(todo, todo)
+        found = self.Todo.objects(uuid=todo_key).get()
+        self.assertIs(found, todo)
 
         # Clear the session
         clear()
 
-        found = self.Todo.id_mapped_class.objects(uuid=todo_key).get()
+        found = self.Todo.objects(uuid=todo_key).get()
         self.assertFalse(found is todo)
 
         self.assertEqual(found.title, 'first')
@@ -98,118 +100,128 @@ class BasicTestCase(BaseTestCase):
         # xxx boolean seems to not like None, and insists on False.
         #self.assertEqual(found.done, None)
         self.assertEqual(found.pub_date, None)
-#
-#    def test_basic_update(self):
-#        todo = self.Todo.create(title='first', text='text1')
-#        todo_key = todo.uuid
-#        save()
-#
-#        # Get a new session.
-#        clear()
-#        # Load the object into the session.
-#        todo = self.Todo.objects(uuid=todo_key).get()
-#        todo.title = u'new title'
-#        todo.text = u'new text'
-#        todo.done = True
-#        todo.pub_date = datetime.now()
-#
-#        self.assertEqual(todo.uuid, todo_key)
-#        self.assertEqual(todo.title, u'new title')
-#        self.assertEqual(todo.text, u'new text')
-#        self.assertEqual(todo.done, True)
-#
-#        save()
-#
-#        self.assertEqual(todo.uuid, todo_key)
-#        self.assertEqual(todo.title, u'new title')
-#        self.assertEqual(todo.text, u'new text')
-#        self.assertEqual(todo.done, True)
-#
-#        old_todo = todo
-#
-#        clear()
-#        todo = self.Todo.objects(uuid=todo_key).get()
-#        self.assertFalse(old_todo is todo)
-#        self.assertEqual(todo.uuid, todo_key)
-#        self.assertEqual(todo.title, u'new title')
-#        self.assertEqual(todo.text, u'new text')
-#        self.assertEqual(todo.done, True)
-#        old_todo = todo
-#
-#        # Test a blind update.
-#        clear()
-#        todo = self.Todo(uuid=todo_key)
-#        self.assertFalse(old_todo is todo)
-#        todo.title = u'new new title'
-#        self.assertEqual(todo.title, u'new new title')
-#        old_todo = todo
-#        save()
-#
-#        clear()
-#        todo = self.Todo.objects(uuid=todo_key).get()
-#        self.assertFalse(old_todo is todo)
-#        self.assertEqual(todo.uuid, todo_key)
-#        self.assertEqual(todo.title, u'new new title')
-#        self.assertEqual(todo.text, u'new text')
-#        self.assertEqual(todo.done, True)
-#
-#    def test_loaded_dirty_load(self):
-#        todo = self.Todo.create(title='first', text='text1')
-#        todo_key = todo.uuid
-#        todo.title = u'new title'
-#        todo.text = u'new text'
-#        todo.done = True
-#        todo.pub_date = datetime.now()
-#        save()
-#
-#        # Get a new session.
-#        clear()
-#        # Load the object into the session.
-#        todo = self.Todo.objects(uuid=todo_key).get()
-#
-#        self.assertEqual(todo.uuid, todo_key)
-#        self.assertEqual(todo.title, u'new title')
-#        self.assertEqual(todo.text, u'new text')
-#        self.assertEqual(todo.done, True)
-#
-#        # Change a value.
-#        todo.title = u'new new title'
-#        # And load again, the load should not clobber the local change.
-#        todo = self.Todo.objects(uuid=todo_key).get()
-#        self.assertEqual(todo.title, u'new new title')
-#        save()
-#        clear()
-#        todo = self.Todo.objects(uuid=todo_key).get()
-#        self.assertEqual(todo.title, u'new new title')
-#
-#    def test_blind_dirty_load(self):
-#        todo = self.Todo.create(title='first', text='text1')
-#        todo_key = todo.uuid
-#        todo.title = u'new title'
-#        todo.text = u'new text'
-#        todo.done = True
-#        todo.pub_date = datetime.now()
-#        save()
-#
-#        # Get a new session.
-#        clear()
-#        # Get a blind handle to the object.
-#        todo = self.Todo(uuid=todo_key)
-#        # Change a value.
-#        todo.title = u'new new title'
-#        # Load. the load should not clobber the local change.
-#        load_todo = self.Todo.objects(uuid=todo_key).get()
-#        self.assertTrue(todo is load_todo)
-#        self.assertEqual(todo.title, u'new new title')
-#        save()
-#        clear()
-#        todo = self.Todo.objects(uuid=todo_key).get()
-#        self.assertEqual(todo.title, u'new new title')
-#
-#
-#class NoDefaultTestCase(BaseTestCase):
-#
-#    model_classes = {'Todo': make_no_default_todo_model}
-#
-#    def test_basic_insert(self):
-#        self.assertRaises(ValueError, self.Todo.create, title='first', text='text1')
+
+    def test_basic_update(self):
+        todo = self.Todo.create(title='first', text='text1')
+        todo_key = todo.uuid
+        old_todo = todo
+        save()
+
+        # Get a new session.
+        clear()
+        # Load the object into the session.
+        todo = self.Todo.objects(uuid=todo_key).get()
+
+        # confirm the session cleared.
+        self.assertIsNot(todo, old_todo)
+
+        # Set some values.
+        todo.title = u'new title'
+        todo.text = u'new text'
+        todo.done = True
+        todo.pub_date = datetime.now()
+
+        # Confirm the local assignment.
+        self.assertEqual(todo.uuid, todo_key)
+        self.assertEqual(todo.title, u'new title')
+        self.assertEqual(todo.text, u'new text')
+        self.assertEqual(todo.done, True)
+
+        save()
+
+        # Confirm the object is readable after save.
+        self.assertEqual(todo.uuid, todo_key)
+        self.assertEqual(todo.title, u'new title')
+        self.assertEqual(todo.text, u'new text')
+        self.assertEqual(todo.done, True)
+
+        old_todo = todo
+
+        # Clear the session.
+        clear()
+        todo = self.Todo.objects(uuid=todo_key).get()
+        # Confirm again the session is cleared.
+        self.assertIsNot(todo, old_todo)
+        self.assertEqual(todo.uuid, todo_key)
+        self.assertEqual(todo.title, u'new title')
+        self.assertEqual(todo.text, u'new text')
+        self.assertEqual(todo.done, True)
+        old_todo = todo
+
+        # Test a blind update.
+        clear()
+        todo = self.Todo(todo_key)
+        self.assertFalse(old_todo is todo)
+        todo.title = u'new new title'
+        self.assertEqual(todo.title, u'new new title')
+        old_todo = todo
+        save()
+
+        clear()
+        todo = self.Todo.objects(uuid=todo_key).get()
+        self.assertFalse(old_todo is todo)
+        self.assertEqual(todo.uuid, todo_key)
+        self.assertEqual(todo.title, u'new new title')
+        self.assertEqual(todo.text, u'new text')
+        self.assertEqual(todo.done, True)
+
+    def test_loaded_dirty_load(self):
+        todo = self.Todo.create(title='first', text='text1')
+        todo_key = todo.uuid
+        todo.title = u'new title'
+        todo.text = u'new text'
+        todo.done = True
+        todo.pub_date = datetime.now()
+        save()
+
+        # Get a new session.
+        clear()
+        # Load the object into the session.
+        todo = self.Todo.objects(uuid=todo_key).get()
+
+        self.assertEqual(todo.uuid, todo_key)
+        self.assertEqual(todo.title, u'new title')
+        self.assertEqual(todo.text, u'new text')
+        self.assertEqual(todo.done, True)
+
+        # Change a value.
+        todo.title = u'new new title'
+        # And load again, the load should not clobber the local change.
+        todo = self.Todo.objects(uuid=todo_key).get()
+        self.assertEqual(todo.title, u'new new title')
+        save()
+        clear()
+        todo = self.Todo.objects(uuid=todo_key).get()
+        self.assertEqual(todo.title, u'new new title')
+
+    def test_blind_dirty_load(self):
+        todo = self.Todo.create(title='first', text='text1')
+        todo_key = todo.uuid
+        todo.title = u'new title'
+        todo.text = u'new text'
+        todo.done = True
+        todo.pub_date = datetime.now()
+        save()
+
+        # Get a new session.
+        clear()
+        # Get a blind handle to the object.
+        todo = self.Todo(todo_key)
+        # Change a value.
+        todo.title = u'new new title'
+        # Load. the load should not clobber the local change.
+        load_todo = self.Todo.objects(uuid=todo_key).get()
+        self.assertTrue(todo is load_todo)
+        self.assertEqual(todo.title, u'new new title')
+        save()
+        clear()
+        todo = self.Todo.objects(uuid=todo_key).get()
+        self.assertEqual(todo.title, u'new new title')
+
+
+class NoDefaultTestCase(BaseTestCase):
+
+    model_classes = {'Todo': make_no_default_todo_model}
+
+    def test_basic_insert(self):
+        self.assertRaises(ValueError, self.Todo.create, title='first', text='text1')
