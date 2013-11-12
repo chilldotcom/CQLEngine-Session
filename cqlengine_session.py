@@ -128,8 +128,8 @@ class SessionModelMetaClass(ModelMetaClass):
         key_name = base._primary_keys.keys()[0]
         stand_in = IdMapMetaClass(name, (IdMapModel,), {
             '_key_name': key_name,
+            'id_mapped_class': base
         })
-        stand_in.id_mapped_class = base
         return stand_in
 
 
