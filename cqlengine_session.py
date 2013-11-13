@@ -393,6 +393,39 @@ class OwnedSet(set):
         self.mark_dirty()
         return super(OwnedSet, self).update(*args, **kwargs)
 
+class OwnedList(list):
+
+    def __init__(self, owner, name, *args, **kwargs):
+        self.owner = owner
+        self.name = name
+        super(OwnedList, self).__init__(*args, **kwargs)
+
+    def mark_dirty(self):
+        self.owner.container_dirty(self.name, self)
+
+    def append(self, *args, **kwargs):
+        self.mark_dirty()
+        return super(OwnedList, self).append(*args, **kwargs)
+
+    def extend(self, *args, **kwargs):
+        self.mark_dirty()
+        return super(OwnedList, self).extend(*args, **kwargs)
+
+    def insert(self, *args, **kwargs):
+        self.mark_dirty()
+        return super(OwnedList, self).insert(*args, **kwargs)
+
+    def pop(self, *args, **kwargs):
+        self.mark_dirty()
+        return super(OwnedList, self).pop(*args, **kwargs)
+
+    def remove(self, *args, **kwargs):
+        self.mark_dirty()
+        return super(OwnedList, self).remove(*args, **kwargs)
+
+#    raise #xxx is extend an update?
+ #   raise # are reverse and sort side-efffecters?
+
 
 class Empty(object):
     def __contains__(self, item):

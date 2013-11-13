@@ -3,7 +3,7 @@ import json
 import unittest
 import uuid
 
-from cqlengine_session import clear, save, SessionModel
+from cqlengine_session import clear, OwnedList, save, SessionModel
 from cqlengine import Model, ValidationError
 from cqlengine.connection import setup
 from cqlengine.management import create_keyspace, delete_keyspace
@@ -221,8 +221,8 @@ class TestListColumn(BaseTestCase):
         clear()
         m2 = TestListModel.get(partition=m1_key)
 
-        assert isinstance(m2.int_list, list)
-        assert isinstance(m2.text_list, list)
+        assert isinstance(m2.int_list, OwnedList)
+        assert isinstance(m2.text_list, OwnedList)
 
         assert len(m2.int_list) == 2
         assert len(m2.text_list) == 2
