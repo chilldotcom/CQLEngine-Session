@@ -1,6 +1,7 @@
 import copy
 import importlib
 import threading
+from cqlengine import columns
 from cqlengine.exceptions import ValidationError
 from cqlengine.management import sync_table
 from cqlengine.models import BaseModel, ModelMetaClass
@@ -156,6 +157,18 @@ class IdMapModel(object):
         self.promote(self._key_name, key)
 
     @classmethod
+    def all(cls):
+        return cls.objects.all()
+
+    @classmethod
+    def filter(cls, *args, **kwargs):
+        return cls.objects.filter(*args, **kwargs)
+
+    @classmethod
+    def get(cls, *args, **kwargs):
+        return cls.objects.get(*args, **kwargs)
+
+    @classmethod
     def create(mapper_class, **kwargs):
         cls = mapper_class.id_mapped_class
         extra_columns = set(kwargs.keys()) - set(cls._columns.keys())
@@ -178,21 +191,28 @@ class IdMapModel(object):
 
         instance = mapper_class(key)
         instance._created = True
-        for name, column in cls._columns.items():
+        for name, col in cls._columns.items():
             if name == key_name:
                 continue
             try:
                 value = kwargs[name]
             except KeyError:
-                if column.default:
-                    if callable(column.default):
-                        value = column.default()
+                if col.default:
+                    if callable(col.default):
+                        value = col.default()
                     else:
-                        value = column.default
+                        value = col.default
                 elif name in cls._primary_keys:
                     raise ValueError(u"Can't create {} without providing primary key {}".format(cls.__name__, name))
-                else:
-                    value = None
+                # Container columns have non-None empty cases.
+                value = None
+            if isinstance(col, columns.BaseContainerColumn):
+                if isinstance(col, columns.Set):
+                    value = OwnedSet(instance, name, col.to_python(value))
+                elif isinstance(col, columns.List):
+                    value = OwnedList(instance, name, col.to_python(value))
+                elif isinstance(col, columns.Map):
+                    value = OwnedMap(instance, name, col.to_python(value))
             instance.promote(name, value)
         return instance
 
@@ -202,13 +222,31 @@ class IdMapModel(object):
 
     def __setattr__(self, name, value):
         # We do this here to prevent instantiation of N dicts on a large load.
+        col = self.id_mapped_class._columns.get(name, None)
+        if col is None:
+            return object.__setattr__(self, name, value)
+        try:
+            dirties = self._dirties
+        except AttributeError:
+            dirties = {}
+            object.__setattr__(self, '_dirties', dirties)
+        if isinstance(col, columns.BaseContainerColumn):
+            if isinstance(col, columns.Set):
+                value = OwnedSet(self, name, col.to_python(value))
+            elif isinstance(col, columns.List):
+                value = OwnedList(self, name, col.to_python(value))
+            elif isinstance(col, columns.Map):
+                value = OwnedMap(self, name, col.to_python(value))
+        dirties[name] = value
+        self.promote(name, value)
+
+    def container_dirty(self, name, value):
         try:
             dirties = self._dirties
         except AttributeError:
             dirties = {}
             object.__setattr__(self, '_dirties', dirties)
         dirties[name] = value
-        self.promote(name, value)
 
     @classmethod
     def sync_table(cls):
@@ -218,22 +256,33 @@ class IdMapModel(object):
     def _construct_instance(cls, names, values):
         mapped_class = cls.id_mapped_class
         key_name, column = mapped_class._primary_keys.items()[0]
+        key = None
+        for name, value in zip(names, values):
+            if name == key_name:
+                key = column.to_python(value)
+                break
+        instance = cls(key=key)
         cleaned_values = {}
         for name, value in zip(names, values):
-            if value is not None:
-                value = mapped_class._columns[name].to_python(value)
+            if name == key_name:
+                continue
+            col = cls.id_mapped_class._columns[name]
+            if isinstance(col, columns.BaseContainerColumn):
+                if isinstance(col, columns.Set):
+                    value = OwnedSet(instance, name, col.to_python(value))
+                elif isinstance(col, columns.List):
+                    value = OwnedList(instance, name, col.to_python(value))
+                elif isinstance(col, columns.Map):
+                    value = OwnedMap(instance, name, col.to_python(value))
+            elif value is not None:
+                value = col.to_python(value)
             cleaned_values[name] = value
-        key = cleaned_values[key_name]
-        print type(key)
-        instance = cls(key=key)
         try:
             dirties = instance._dirties
         except AttributeError:
             dirties = EMPTY
         for name, value in cleaned_values.items():
             if name != key_name and name not in dirties:
-                if value is not None:
-                    value = mapped_class._columns[name].to_python(value)
                 instance.promote(name, value)
         return instance
 
@@ -282,6 +331,67 @@ class WrappedQuerySet(ModelQuerySet):
                 clone.__dict__[k] = copy.deepcopy(v, memo)
 
         return clone
+
+
+class OwnedSet(set):
+
+    def __init__(self, owner, name, *args, **kwargs):
+        self.owner = owner
+        self.name = name
+        super(OwnedSet, self).__init__(*args, **kwargs)
+
+    def mark_dirty(self):
+        self.owner.container_dirty(self.name, self)
+
+    def add(self, *args, **kwargs):
+        self.mark_dirty()
+        return super(OwnedSet, self).add(*args, **kwargs)
+
+    def remove(self, *args, **kwargs):
+        self.mark_dirty()
+        return super(OwnedSet, self).remove(*args, **kwargs)
+
+    def clear(self, *args, **kwargs):
+        self.mark_dirty()
+        return super(OwnedSet, self).clear(*args, **kwargs)
+
+    def copy(self, *args, **kwargs):
+        c = super(OwnedSet, self).copy(*args, **kwargs)
+        if hasattr(self, '_dirty'):
+            c._dirty = self._dirty
+        return c
+
+    def difference_update(self, *args, **kwargs):
+        self.mark_dirty()
+        return super(OwnedSet, self).difference_update(*args, **kwargs)
+
+    def discard(self, *args, **kwargs):
+        self.mark_dirty()
+        return super(OwnedSet, self).discard(*args, **kwargs)
+
+    def intersection_update(self, *args, **kwargs):
+        self.mark_dirty()
+        return super(OwnedSet, self).intersection_update(*args, **kwargs)
+
+    def pop(self, *args, **kwargs):
+        self.mark_dirty()
+        return super(OwnedSet, self).pop(*args, **kwargs)
+
+    def remove(self, *args, **kwargs):
+        self.mark_dirty()
+        return super(OwnedSet, self).remove(*args, **kwargs)
+
+    def remove(self, *args, **kwargs):
+        self.mark_dirty()
+        return super(OwnedSet, self).remove(*args, **kwargs)
+
+    def symmetric_difference_update(self, *args, **kwargs):
+        self.mark_dirty()
+        return super(OwnedSet, self).symmetric_difference_update(*args, **kwargs)
+
+    def update(self, *args, **kwargs):
+        self.mark_dirty()
+        return super(OwnedSet, self).update(*args, **kwargs)
 
 
 class Empty(object):

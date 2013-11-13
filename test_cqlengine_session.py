@@ -4,7 +4,7 @@ import uuid
 
 from cqlengine import columns
 from cqlengine.connection import setup
-from cqlengine.management import create_keyspace, delete_keyspace, sync_table
+from cqlengine.management import create_keyspace, delete_keyspace
 from cqlengine.query import DoesNotExist
 from cqlengine_session import clear, save, SessionModel
 
@@ -217,6 +217,59 @@ class BasicTestCase(BaseTestCase):
         clear()
         todo = self.Todo.objects(uuid=todo_key).get()
         self.assertEqual(todo.title, u'new new title')
+
+    def test_multi_result_load(self):
+        todo1 = self.Todo.create(title='first', text='text1')
+        todo2 = self.Todo.create(title='second', text='text2')
+        todo3 = self.Todo.create(title='third', text='text3')
+        todo4 = self.Todo.create(title='fourth', text='text4')
+        todo5 = self.Todo.create(title='fifth', text='text5')
+        save()
+
+        results = self.Todo.all()
+        self.assertEqual(5, len(results))
+        results = set(results)
+        self.assertIn(todo1, results)
+        self.assertIn(todo2, results)
+        self.assertIn(todo3, results)
+        self.assertIn(todo4, results)
+        self.assertIn(todo5, results)
+
+        todo1_key = todo1.uuid
+        todo2_key = todo2.uuid
+        todo3_key = todo3.uuid
+        todo4_key = todo4.uuid
+        todo5_key = todo5.uuid
+        clear()
+
+        results = self.Todo.all()
+        self.assertEqual(5, len(results))
+        keys = set([t.uuid for t in results])
+        self.assertIn(todo1_key, keys)
+        self.assertIn(todo2_key, keys)
+        self.assertIn(todo3_key, keys)
+        self.assertIn(todo4_key, keys)
+        self.assertIn(todo5_key, keys)
+
+    def test_missing_attributes(self):
+        todo = self.Todo.create(title='first', text='text1')
+        todo_key = todo.uuid
+        todo.title = u'title'
+        todo.text = u'text'
+        todo.done = True
+        todo.pub_date = datetime.now()
+        save()
+
+        # Get a new session.
+        clear()
+
+        # Get a blind handle to the object.
+        todo = self.Todo(todo_key)
+        self.assertRaises(AttributeError, getattr, todo, 'title')
+        # Load the data to this object.
+        todo.get()
+        self.assertEqual(todo.title, u'title')
+
 
 
 class NoDefaultTestCase(BaseTestCase):
