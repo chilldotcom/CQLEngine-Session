@@ -3,7 +3,7 @@ import json
 import unittest
 import uuid
 
-from cqlengine_session import clear, OwnedList, save, SessionModel
+from cqlengine_session import clear, OwnedList, OwnedMap, save, SessionModel
 from cqlengine import Model, ValidationError
 from cqlengine.connection import setup
 from cqlengine.management import create_keyspace, delete_keyspace
@@ -323,144 +323,152 @@ class TestMapModel(SessionModel):
     text_map = columns.Map(columns.Text, columns.DateTime, required=False)
 
 
-#class TestMapColumn(BaseTestCase):
-#
-#    model_classes = {'TestMapModel': TestMapModel}
-#
-#    def test_empty_default(self):
-#        tmp = TestMapModel.create()
-#        tmp.int_map['blah'] = 1
-#
-#    def test_empty_retrieve(self):
-#        tmp = TestMapModel.create()
-#        tmp2 = TestMapModel.get(partition=tmp.partition)
-#        tmp2.int_map['blah'] = 1
-#
-#    def test_remove_last_entry_works(self):
-#        tmp = TestMapModel.create()
-#        tmp.text_map["blah"] = datetime.now()
-#        save()
-#        del tmp.text_map["blah"]
-#        save()
-#
-#        tmp = TestMapModel.get(partition=tmp.partition)
-#        self.assertNotIn("blah", tmp.int_map)
-#
-#
-#
-#    def test_io_success(self):
-#        """ Tests that a basic usage works as expected """
-#        k1 = uuid.uuid4()
-#        k2 = uuid.uuid4()
-#        now = datetime.now()
-#        then = now + timedelta(days=1)
-#        m1 = TestMapModel.create(int_map={1: k1, 2: k2}, text_map={'now': now, 'then': then})
-#        m2 = TestMapModel.get(partition=m1.partition)
-#
-#        assert isinstance(m2.int_map, dict)
-#        assert isinstance(m2.text_map, dict)
-#
-#        assert 1 in m2.int_map
-#        assert 2 in m2.int_map
-#        assert m2.int_map[1] == k1
-#        assert m2.int_map[2] == k2
-#
-#        assert 'now' in m2.text_map
-#        assert 'then' in m2.text_map
-#        assert (now - m2.text_map['now']).total_seconds() < 0.001
-#        assert (then - m2.text_map['then']).total_seconds() < 0.001
-#
-#    def test_type_validation(self):
+class TestMapColumn(BaseTestCase):
+
+    model_classes = {'TestMapModel': TestMapModel}
+
+    def test_empty_default(self):
+        tmp = TestMapModel.create()
+        tmp.int_map['blah'] = 1
+
+    def test_empty_retrieve(self):
+        tmp = TestMapModel.create()
+        t_key = tmp.partition
+        save()
+        clear()
+        tmp2 = TestMapModel.get(partition=t_key)
+        tmp2.int_map['blah'] = 1
+
+    def test_remove_last_entry_works(self):
+        tmp = TestMapModel.create()
+        t_key = tmp.partition
+        tmp.text_map["blah"] = datetime.now()
+        save()
+        del tmp.text_map["blah"]
+        save()
+        clear()
+
+        tmp = TestMapModel.get(partition=t_key)
+        self.assertNotIn("blah", tmp.int_map)
+
+
+
+    def test_io_success(self):
+        """ Tests that a basic usage works as expected """
+        k1 = uuid.uuid4()
+        k2 = uuid.uuid4()
+        now = datetime.now()
+        then = now + timedelta(days=1)
+        m1 = TestMapModel.create(int_map={1: k1, 2: k2}, text_map={'now': now, 'then': then})
+        m_key = m1.partition
+        save()
+        clear()
+        m2 = TestMapModel.get(partition=m_key)
+
+        assert isinstance(m2.int_map, OwnedMap)
+        assert isinstance(m2.text_map, OwnedMap)
+
+        assert 1 in m2.int_map
+        assert 2 in m2.int_map
+        assert m2.int_map[1] == k1
+        assert m2.int_map[2] == k2
+
+        assert 'now' in m2.text_map
+        assert 'then' in m2.text_map
+        assert (now - m2.text_map['now']).total_seconds() < 0.001
+        assert (then - m2.text_map['then']).total_seconds() < 0.001
+
+    def test_type_validation(self):
+        """
+        Tests that attempting to use the wrong types will raise an exception
+        """
+        with self.assertRaises(ValidationError):
+            TestMapModel.create(int_map={'key': 2, uuid.uuid4(): 'val'}, text_map={2: 5})
+
+    def test_partial_updates(self):
+        """ Tests that partial udpates work as expected """
+        now = datetime.now()
+        #derez it a bit
+        now = datetime(*now.timetuple()[:-3])
+        early = now - timedelta(minutes=30)
+        earlier = early - timedelta(minutes=30)
+        later = now + timedelta(minutes=30)
+
+        initial = {'now': now, 'early': earlier}
+        final = {'later': later, 'early': early}
+
+        m1 = TestMapModel.create(text_map=initial)
+
+        m1.text_map = final
+        save()
+
+        m2 = TestMapModel.get(partition=m1.partition)
+        assert m2.text_map == final
+
+    def test_updates_from_none(self):
+        """ Tests that updates from None work as expected """
+        m = TestMapModel.create(int_map=None)
+        expected = {1: uuid.uuid4()}
+        m.int_map = expected
+        save()
+
+
+        m2 = TestMapModel.get(partition=m.partition)
+        assert m2.int_map == expected
+
+        m2.int_map = None
+        save()
+        m3 = TestMapModel.get(partition=m.partition)
+        assert m3.int_map != expected
+
+    def test_updates_to_none(self):
+        """ Tests that setting the field to None works as expected """
+        m = TestMapModel.create(int_map={1: uuid.uuid4()})
+        m.int_map = None
+        save()
+
+        m2 = TestMapModel.get(partition=m.partition)
+        assert m2.int_map == {}
+
+    def test_instantiation_with_column_class(self):
+        """
+        Tests that columns instantiated with a column class work properly
+        and that the class is instantiated in the constructor
+        """
+        column = columns.Map(columns.Text, columns.Integer)
+        assert isinstance(column.key_col, columns.Text)
+        assert isinstance(column.value_col, columns.Integer)
+
+    def test_instantiation_with_column_instance(self):
+        """
+        Tests that columns instantiated with a column instance work properly
+        """
+        column = columns.Map(columns.Text(min_length=100), columns.Integer())
+        assert isinstance(column.key_col, columns.Text)
+        assert isinstance(column.value_col, columns.Integer)
+
+    def test_to_python(self):
+        """ Tests that to_python of value column is called """
+        column = columns.Map(JsonTestColumn, JsonTestColumn)
+        val = {1: 2, 3: 4, 5: 6}
+        db_val = column.to_database(val)
+        assert db_val.value == {json.dumps(k):json.dumps(v) for k,v in val.items()}
+        py_val = column.to_python(db_val.value)
+        assert py_val == val
+
+#    def test_partial_update_creation(self):
 #        """
-#        Tests that attempting to use the wrong types will raise an exception
+#        Tests that proper update statements are created for a partial list update
+#        :return:
 #        """
-#        with self.assertRaises(ValidationError):
-#            TestMapModel.create(int_map={'key': 2, uuid.uuid4(): 'val'}, text_map={2: 5})
+#        final = range(10)
+#        initial = final[3:7]
 #
-#    def test_partial_updates(self):
-#        """ Tests that partial udpates work as expected """
-#        now = datetime.now()
-#        #derez it a bit
-#        now = datetime(*now.timetuple()[:-3])
-#        early = now - timedelta(minutes=30)
-#        earlier = early - timedelta(minutes=30)
-#        later = now + timedelta(minutes=30)
+#        ctx = {}
+#        col = columns.List(columns.Integer, db_field="TEST")
+#        statements = col.get_update_statement(final, initial, ctx)
 #
-#        initial = {'now': now, 'early': earlier}
-#        final = {'later': later, 'early': early}
-#
-#        m1 = TestMapModel.create(text_map=initial)
-#
-#        m1.text_map = final
-#        save()
-#
-#        m2 = TestMapModel.get(partition=m1.partition)
-#        assert m2.text_map == final
-#
-#    def test_updates_from_none(self):
-#        """ Tests that updates from None work as expected """
-#        m = TestMapModel.create(int_map=None)
-#        expected = {1: uuid.uuid4()}
-#        m.int_map = expected
-#        save()
-#
-#
-#        m2 = TestMapModel.get(partition=m.partition)
-#        assert m2.int_map == expected
-#
-#        m2.int_map = None
-#        save()
-#        m3 = TestMapModel.get(partition=m.partition)
-#        assert m3.int_map != expected
-#
-#    def test_updates_to_none(self):
-#        """ Tests that setting the field to None works as expected """
-#        m = TestMapModel.create(int_map={1: uuid.uuid4()})
-#        m.int_map = None
-#        save()
-#
-#        m2 = TestMapModel.get(partition=m.partition)
-#        assert m2.int_map == {}
-#
-#    def test_instantiation_with_column_class(self):
-#        """
-#        Tests that columns instantiated with a column class work properly
-#        and that the class is instantiated in the constructor
-#        """
-#        column = columns.Map(columns.Text, columns.Integer)
-#        assert isinstance(column.key_col, columns.Text)
-#        assert isinstance(column.value_col, columns.Integer)
-#
-#    def test_instantiation_with_column_instance(self):
-#        """
-#        Tests that columns instantiated with a column instance work properly
-#        """
-#        column = columns.Map(columns.Text(min_length=100), columns.Integer())
-#        assert isinstance(column.key_col, columns.Text)
-#        assert isinstance(column.value_col, columns.Integer)
-#
-#    def test_to_python(self):
-#        """ Tests that to_python of value column is called """
-#        column = columns.Map(JsonTestColumn, JsonTestColumn)
-#        val = {1: 2, 3: 4, 5: 6}
-#        db_val = column.to_database(val)
-#        assert db_val.value == {json.dumps(k):json.dumps(v) for k,v in val.items()}
-#        py_val = column.to_python(db_val.value)
-#        assert py_val == val
-#
-##    def test_partial_update_creation(self):
-##        """
-##        Tests that proper update statements are created for a partial list update
-##        :return:
-##        """
-##        final = range(10)
-##        initial = final[3:7]
-##
-##        ctx = {}
-##        col = columns.List(columns.Integer, db_field="TEST")
-##        statements = col.get_update_statement(final, initial, ctx)
-##
-##        assert len([v for v in ctx.values() if [0,1,2] == v.value]) == 1
-##        assert len([v for v in ctx.values() if [7,8,9] == v.value]) == 1
-##        assert len([s for s in statements if '"TEST" = "TEST" +' in s]) == 1
-##        assert len([s for s in statements if '+ "TEST"' in s]) == 1
+#        assert len([v for v in ctx.values() if [0,1,2] == v.value]) == 1
+#        assert len([v for v in ctx.values() if [7,8,9] == v.value]) == 1
+#        assert len([s for s in statements if '"TEST" = "TEST" +' in s]) == 1
+#        assert len([s for s in statements if '+ "TEST"' in s]) == 1

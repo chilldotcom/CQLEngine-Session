@@ -426,6 +426,44 @@ class OwnedList(list):
 #    raise #xxx is extend an update?
  #   raise # are reverse and sort side-efffecters?
 
+class OwnedMap(dict):
+
+    def __init__(self, owner, name, *args, **kwargs):
+        self.owner = owner
+        self.name = name
+        super(OwnedMap, self).__init__(*args, **kwargs)
+
+    def mark_dirty(self):
+        self.owner.container_dirty(self.name, self)
+
+    def clear(self, *args, **kwargs):
+        self.mark_dirty()
+        return super(OwnedMap, self).clear(*args, **kwargs)
+
+    def copy(self, *args, **kwargs):
+        c = super(OwnedMap, self).copy(*args, **kwargs)
+        if hasattr(self, '_dirty'):
+            c._dirty = self._dirty
+        return c
+
+    def pop(self, *args, **kwargs):
+        self.mark_dirty()
+        return super(OwnedMap, self).pop(*args, **kwargs)
+
+    def popitem(self, *args, **kwargs):
+        self.mark_dirty()
+        return super(OwnedMap, self).popitem(*args, **kwargs)
+
+    def update(self, *args, **kwargs):
+        self.mark_dirty()
+        return super(OwnedMap, self).update(*args, **kwargs)
+
+    def remove(self, *args, **kwargs):
+        self.mark_dirty()
+        return super(OwnedMap, self).remove(*args, **kwargs)
+
+#fromkeys
+#setdefault
 
 class Empty(object):
     def __contains__(self, item):
