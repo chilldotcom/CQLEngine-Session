@@ -1,3 +1,31 @@
+"""
+CQLEngine-Session
+
+Your cqlengine model must inherit from cqlengine_session.SessionModel instead
+of cqlengine.model.BaseModel
+
+SessionModel will replace youl SessionModel declarations with classes of type
+IdMapModel.  Your model module will get classes of type BaseModel with an
+underscore prefixed to the name.
+
+example:
+class Foo(SessionModel):
+    pass
+
+results in Foo being a IdMapModel, and _Foo being a BaseModel.
+
+Note that making blind handles requires you pass a key.
+blind = Foo(key)
+
+you can make changes and save them (without first needing to load the object.)
+blind.title = u'new title'
+save()
+
+To create new object use create
+foo = Foo.create()
+
+"""
+
 import copy
 import importlib
 import threading
@@ -67,13 +95,21 @@ class Session(object):
 
     def save(self):
         updates = set()
+        counter_updates = set()
         creates = set()
+        counter_creates = set()
         for model_class, by_key in self.instances_by_class.iteritems():
             for key, instance in by_key.iteritems():
                 if hasattr(instance, '_created') and instance._created:
-                    creates.add(instance)
+                    if model_class.id_mapped_class._has_counter:
+                        counter_creates.add(instance)
+                    else:
+                        creates.add(instance)
                 elif hasattr(instance, '_dirties'):
-                    updates.add(instance)
+                    if model_class.id_mapped_class._has_counter:
+                        counter_updates.add(instance)
+                    else:
+                        updates.add(instance)
         with BatchQuery() as batch:
             for create in creates:
                 values = {n: getattr(create, n) for n in create.id_mapped_class._columns.keys()}
@@ -84,6 +120,22 @@ class Session(object):
                     setattr(cqlengine_instance, name, value)
                 del update._dirties
                 cqlengine_instance.batch(batch).update()
+        # It would seem that batch does not work with counter?
+        #with BatchQuery() as batch:
+        for create in counter_creates:
+            arg = {create._key_name: create.key}
+            instance = create.id_mapped_class.create(**arg)
+            for name, col in create.id_mapped_class._columns.items():
+                if isinstance(col, columns.Counter):
+                    val = getattr(create, name)
+                    setattr(instance, name, val)
+            instance.update()
+        for update in counter_updates:
+            cqlengine_instance = update.id_mapped_class(**{update._key_name: update._key})
+            for name, value in update._dirties.items():
+                setattr(cqlengine_instance, name, value)
+            del update._dirties
+            cqlengine_instance.update()
 #            for delete in self.deletes:
 #                raise NotImplementedError
 
@@ -202,10 +254,13 @@ class IdMapModel(object):
                         value = col.default()
                     else:
                         value = col.default
+                elif isinstance(col, columns.Counter):
+                    value = 0
                 elif name in cls._primary_keys:
                     raise ValueError(u"Can't create {} without providing primary key {}".format(cls.__name__, name))
-                # Container columns have non-None empty cases.
-                value = None
+                else:
+                    # Container columns have non-None empty cases.
+                    value = None
             if isinstance(col, columns.BaseContainerColumn):
                 if isinstance(col, columns.Set):
                     value = OwnedSet(instance, name, col.to_python(value))

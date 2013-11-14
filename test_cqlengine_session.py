@@ -270,6 +270,26 @@ class BasicTestCase(BaseTestCase):
         todo.get()
         self.assertEqual(todo.title, u'title')
 
+    def test_blind_set_to_none(self):
+        todo = self.Todo.create(title='first', text='text1')
+        todo_key = todo.uuid
+        todo.title = u'title'
+        todo.text = u'text'
+        todo.done = True
+        todo.pub_date = datetime.now()
+        save()
+
+        # Get a new session.
+        clear()
+
+        # Get a blind handle to the object.
+        todo = self.Todo(todo_key)
+        todo.title = None
+        save()
+        clear()
+
+        todo = self.Todo.objects(uuid=todo_key).get()
+        assert todo.title == None
 
 
 class NoDefaultTestCase(BaseTestCase):
