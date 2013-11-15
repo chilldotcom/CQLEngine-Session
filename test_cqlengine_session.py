@@ -8,6 +8,11 @@ from cqlengine.management import create_keyspace, delete_keyspace
 from cqlengine.query import DoesNotExist
 from cqlengine_session import clear, save, SessionModel
 
+def groom_time(dtime):
+    return datetime(*dtime.timetuple()[:6])
+
+def now():
+    return groom_time(datetime.now())
 
 def make_todo_model():
     class Todo(SessionModel):
@@ -50,7 +55,18 @@ def make_multi_key_model():
         title = columns.Text(max_length=60)
         text = columns.Text()
         done = columns.Boolean()
-        pub_date = columns.DateTime(primary_key=True, default=datetime.now)
+        pub_date = columns.DateTime(primary_key=True, default=now)
+
+    return Todo
+
+def make_no_default_multi_key_model():
+    class Todo(SessionModel):
+        partition = columns.UUID(primary_key=True)
+        uuid = columns.UUID(primary_key=True)
+        title = columns.Text(max_length=60)
+        text = columns.Text()
+        done = columns.Boolean()
+        pub_date = columns.DateTime(primary_key=True)
 
     return Todo
 
@@ -145,7 +161,7 @@ class BasicTestCase(BaseTestCase):
         todo.title = u'new title'
         todo.text = u'new text'
         todo.done = True
-        todo.pub_date = datetime.now()
+        todo.pub_date = now()
 
         # Confirm the local assignment.
         self.assertEqual(todo.uuid, todo_key)
@@ -197,7 +213,7 @@ class BasicTestCase(BaseTestCase):
         todo.title = u'new title'
         todo.text = u'new text'
         todo.done = True
-        todo.pub_date = datetime.now()
+        todo.pub_date = now()
         save()
 
         # Get a new session.
@@ -226,7 +242,7 @@ class BasicTestCase(BaseTestCase):
         todo.title = u'new title'
         todo.text = u'new text'
         todo.done = True
-        todo.pub_date = datetime.now()
+        todo.pub_date = now()
         save()
 
         # Get a new session.
@@ -283,7 +299,7 @@ class BasicTestCase(BaseTestCase):
         todo.title = u'title'
         todo.text = u'text'
         todo.done = True
-        todo.pub_date = datetime.now()
+        todo.pub_date = now()
         save()
 
         # Get a new session.
@@ -302,7 +318,7 @@ class BasicTestCase(BaseTestCase):
         todo.title = u'title'
         todo.text = u'text'
         todo.done = True
-        todo.pub_date = datetime.now()
+        todo.pub_date = now()
         save()
 
         # Get a new session.
@@ -323,7 +339,31 @@ class NoDefaultTestCase(BaseTestCase):
     model_classes = {'Todo': make_no_default_todo_model}
 
     def test_basic_insert(self):
+
         self.assertRaises(ValueError, self.Todo.create, title='first', text='text1')
+
+class NoDefaultTestCase(BaseTestCase):
+
+    model_classes = {'Todo': make_no_default_todo_model}
+
+    def test_basic_insert(self):
+        with self.assertRaises(ValueError):
+            self.Todo.create(title='first', text='text1')
+
+        self.Todo.create(uuid=uuid.uuid4())
+
+class NoDefaultMultiTestCase(BaseTestCase):
+
+    model_classes = {'Todo': make_no_default_multi_key_model}
+
+    def test_basic_insert(self):
+        with self.assertRaises(ValueError):
+            self.Todo.create(title='first', text='text1')
+
+        self.Todo.create(partition=uuid.uuid4(),
+                         uuid=uuid.uuid4(),
+                         pub_date=now())
+
 
 class InheritedTestCase(BaseTestCase):
 
@@ -351,6 +391,23 @@ class MultiKeyTestCase(BaseTestCase):
         cluster2 = todo.pub_date
         save()
         clear()
+
         todo = self.Todo.objects(partition=partition, uuid=cluster1, pub_date=cluster2).get()
         assert todo.title == u'multitest'
 
+        print '-------calling create---------'
+        new_cluster2 = groom_time(datetime(2013, 11, 15, 16, 12, 10))
+        todo2 = self.Todo.create(partition=partition, uuid=cluster1, pub_date=new_cluster2)
+        self.assertIsNot(todo2, todo)
+        save()
+
+        print '-------making new instance w same stuff'
+        todo3 = self.Todo(partition, cluster1, new_cluster2)
+        self.assertIs(todo2, todo3)
+
+        print '-----calling get-----'
+        todo4 = self.Todo.objects(partition=partition,
+                                  uuid=cluster1,
+                                  pub_date=new_cluster2).get()
+        assert todo4.pub_date == new_cluster2
+        self.assertIs(todo2, todo4)

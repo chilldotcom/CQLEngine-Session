@@ -112,10 +112,13 @@ class Session(object):
                         updates.add(instance)
         with BatchQuery() as batch:
             for create in creates:
-                values = {n: getattr(create, n) for n in create.id_mapped_class._columns.keys()}
-                create.id_mapped_class.batch(batch).create(**values)
+                key_names = create.id_mapped_class._columns.keys()
+                arg = {name: getattr(create, name) for name in key_names}
+                create.id_mapped_class.batch(batch).create(**arg)
             for update in updates:
-                cqlengine_instance = update.id_mapped_class(**{update._key_name: update._key})
+                key_names = update.id_mapped_class._primary_keys.keys()
+                arg = {name: getattr(update, name) for name in key_names}
+                cqlengine_instance = update.id_mapped_class(**arg)
                 for name, value in update._dirties.items():
                     setattr(cqlengine_instance, name, value)
                 del update._dirties
@@ -123,7 +126,8 @@ class Session(object):
         # It would seem that batch does not work with counter?
         #with BatchQuery() as batch:
         for create in counter_creates:
-            arg = {create._key_name: create.key}
+            primary_key_names = create.id_mapped_class._primary_keys.keys()
+            arg = {name: getattr(create, name) for name in primary_key_names}
             instance = create.id_mapped_class.create(**arg)
             for name, col in create.id_mapped_class._columns.items():
                 if isinstance(col, columns.Counter):
@@ -131,7 +135,9 @@ class Session(object):
                     setattr(instance, name, val)
             instance.update()
         for update in counter_updates:
-            cqlengine_instance = update.id_mapped_class(**{update._key_name: update._key})
+            primary_key_names = update.id_mapped_class._primary_keys.keys()
+            arg = {name: getattr(update, name) for name in primary_key_names}
+            cqlengine_instance = update.id_mapped_class(**arg)
             for name, value in update._dirties.items():
                 setattr(cqlengine_instance, name, value)
             del update._dirties
@@ -161,9 +167,7 @@ class SessionModelMetaClass(ModelMetaClass):
         # cqlengine.models.ModelMetaClass
         module = importlib.import_module(cls.__module__)
         setattr(module, new_name, base)
-        key_name = base._primary_keys.keys()[0]
         stand_in = IdMapMetaClass(name, (IdMapModel,), {
-            '_key_name': key_name,
             'id_mapped_class': base
         })
         return stand_in
@@ -176,7 +180,7 @@ class SessionModel(BaseModel):
 
 class IdMapMetaClass(type):
 
-    def __call__(cls, key):
+    def __call__(cls, *key):
         """If instance is in the id-map, return it, else make and return it."""
         session = get_session()
         try:
@@ -188,7 +192,7 @@ class IdMapMetaClass(type):
         except KeyError:
             instance_by_key = {}
             session.instances_by_class[cls] = instance_by_key
-        instance = super(IdMapMetaClass, cls).__call__(key)
+        instance = super(IdMapMetaClass, cls).__call__(*key)
         instance_by_key[key] = instance
         return instance
 
@@ -205,9 +209,11 @@ class IdMapModel(object):
 
     objects = QuerySetDescriptor()
 
-    def __init__(self, key):
+    def __init__(self, *key):
         self.key = key
-        self.promote(self._key_name, key)
+        key_names = self.id_mapped_class._primary_keys.keys()
+        for name, value in zip(key_names, key):
+            self.promote(name, value)
 
     @classmethod
     def all(cls):
@@ -222,31 +228,16 @@ class IdMapModel(object):
         return cls.objects.get(*args, **kwargs)
 
     @classmethod
-    def create(mapper_class, **kwargs):
-        cls = mapper_class.id_mapped_class
-        extra_columns = set(kwargs.keys()) - set(cls._columns.keys())
+    def create(cls, **kwargs):
+        column_names = cls.id_mapped_class._columns.keys()
+        extra_columns = set(kwargs.keys()) - set(column_names)
         if extra_columns:
-            raise ValidationError("Incorrect columns passed: {}".format(extra_columns))
+            raise ValidationError(
+                    "Incorrect columns passed: {}".format(extra_columns))
 
-        key_name, column = cls._primary_keys.items()[0]
-        try:
-            key = kwargs[key_name]
-        except KeyError:
-            key = None
-        if key is None:
-            if column.default:
-                if callable(column.default):
-                    key = column.default()
-                else:
-                    key = column.default
-            else:
-                raise ValueError(u"Can't create {} without providing primary key {}".format(mapper_class.__name__, key_name))
-
-        instance = mapper_class(key)
-        instance._created = True
-        for name, col in cls._columns.items():
-            if name == key_name:
-                continue
+        primary_keys = cls.id_mapped_class._primary_keys
+        uncleaned_values = {}
+        for name, col in cls.id_mapped_class._columns.items():
             try:
                 value = kwargs[name]
             except KeyError:
@@ -257,11 +248,22 @@ class IdMapModel(object):
                         value = col.default
                 elif isinstance(col, columns.Counter):
                     value = 0
-                elif name in cls._primary_keys:
+                elif name in primary_keys:
                     raise ValueError(u"Can't create {} without providing primary key {}".format(cls.__name__, name))
                 else:
                     # Container columns have non-None empty cases.
                     value = None
+            uncleaned_values[name] = value
+
+        key = []
+        for name, col in primary_keys.items():
+            key.append(col.to_python(uncleaned_values[name]))
+        instance = cls(*key)
+        instance._created = True
+        for name, col in cls.id_mapped_class._columns.items():
+            if name in primary_keys:
+                continue
+            value = uncleaned_values[name]
             if isinstance(col, columns.BaseContainerColumn):
                 if isinstance(col, columns.Set):
                     value = OwnedSet(instance, name, col.to_python(value))
@@ -269,6 +271,8 @@ class IdMapModel(object):
                     value = OwnedList(instance, name, col.to_python(value))
                 elif isinstance(col, columns.Map):
                     value = OwnedMap(instance, name, col.to_python(value))
+            elif value is not None:
+                value = col.to_python(value)
             instance.promote(name, value)
         return instance
 
@@ -311,16 +315,15 @@ class IdMapModel(object):
     @classmethod
     def _construct_instance(cls, names, values):
         mapped_class = cls.id_mapped_class
-        key_name, column = mapped_class._primary_keys.items()[0]
-        key = None
-        for name, value in zip(names, values):
-            if name == key_name:
-                key = column.to_python(value)
-                break
-        instance = cls(key=key)
+        primary_keys = mapped_class._primary_keys
+        values = dict(zip(names, values))
+        key = []
+        for name, col in primary_keys.items():
+            key.append(col.to_python(values[name]))
+        instance = cls(*key)
         cleaned_values = {}
-        for name, value in zip(names, values):
-            if name == key_name:
+        for name, value in values.items():
+            if name in primary_keys:
                 continue
             col = cls.id_mapped_class._columns[name]
             if isinstance(col, columns.BaseContainerColumn):
@@ -338,7 +341,7 @@ class IdMapModel(object):
         except AttributeError:
             dirties = EMPTY
         for name, value in cleaned_values.items():
-            if name != key_name and name not in dirties:
+            if name not in primary_keys and name not in dirties:
                 instance.promote(name, value)
         return instance
 
