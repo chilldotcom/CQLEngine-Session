@@ -31,8 +31,8 @@ def make_no_default_todo_model():
 
 def make_inherited_model():
     class IntermediateTodo(SessionModel):
-       __abstract__ = True
-       #intermiate_class_attr = True
+        __abstract__ = True
+        base_text = columns.Text()
 
     class Todo(IntermediateTodo):
         uuid = columns.UUID(primary_key=True, default=uuid.uuid4)
@@ -319,7 +319,11 @@ class InheritedTestCase(BaseTestCase):
 
     def test_basic(self):
         todo = self.Todo.create()
+        todo.title = u'parent title'
+        todo.base_text = u'base text'
         save()
         clear()
-        todo = self.Todo.all()
+        todo = self.Todo.get()
+        assert todo.title == u'parent title'
+        assert todo.base_text == u'base text'
 
