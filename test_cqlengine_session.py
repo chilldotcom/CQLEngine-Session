@@ -43,6 +43,18 @@ def make_inherited_model():
 
     return Todo
 
+def make_multi_key_model():
+    class Todo(SessionModel):
+        partition = columns.UUID(primary_key=True, default=uuid.uuid4)
+        uuid = columns.UUID(primary_key=True, default=uuid.uuid4)
+        title = columns.Text(max_length=60)
+        text = columns.Text()
+        done = columns.Boolean()
+        pub_date = columns.DateTime(primary_key=True, default=datetime.now)
+
+    return Todo
+
+
 
 class BaseTestCase(unittest.TestCase):
 
@@ -326,4 +338,19 @@ class InheritedTestCase(BaseTestCase):
         todo = self.Todo.get()
         assert todo.title == u'parent title'
         assert todo.base_text == u'base text'
+
+class MultiKeyTestCase(BaseTestCase):
+
+    model_classes = {'Todo': make_multi_key_model}
+
+    def test_basic(self):
+        todo = self.Todo.create()
+        todo.title = u'multitest'
+        partition = todo.partition
+        cluster1 = todo.uuid
+        cluster2 = todo.pub_date
+        save()
+        clear()
+        todo = self.Todo.objects(partition=partition, uuid=cluster1, pub_date=cluster2).get()
+        assert todo.title == u'multitest'
 
