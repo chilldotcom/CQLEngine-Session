@@ -142,7 +142,8 @@ class Session(object):
 class SessionModelMetaClass(ModelMetaClass):
 
     def __new__(cls, name, bases, attrs):
-        if name == 'SessionModel':
+#        if name == 'SessionModel':
+        if attrs.get('__abstract__'):
             return super(SessionModelMetaClass, cls).__new__(cls,
                                                              name,
                                                              bases,

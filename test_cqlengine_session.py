@@ -29,6 +29,20 @@ def make_no_default_todo_model():
 
     return Todo
 
+def make_inherited_model():
+    class IntermediateTodo(SessionModel):
+       __abstract__ = True
+       #intermiate_class_attr = True
+
+    class Todo(IntermediateTodo):
+        uuid = columns.UUID(primary_key=True, default=uuid.uuid4)
+        title = columns.Text(max_length=60)
+        text = columns.Text()
+        done = columns.Boolean()
+        pub_date = columns.DateTime()
+
+    return Todo
+
 
 class BaseTestCase(unittest.TestCase):
 
@@ -298,3 +312,14 @@ class NoDefaultTestCase(BaseTestCase):
 
     def test_basic_insert(self):
         self.assertRaises(ValueError, self.Todo.create, title='first', text='text1')
+
+class InheritedTestCase(BaseTestCase):
+
+    model_classes = {'Todo': make_inherited_model}
+
+    def test_basic(self):
+        todo = self.Todo.create()
+        save()
+        clear()
+        todo = self.Todo.all()
+
