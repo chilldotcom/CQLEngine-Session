@@ -36,6 +36,10 @@ from cqlengine.models import BaseModel, ColumnQueryEvaluator, ModelMetaClass
 from cqlengine.query import BatchQuery, ModelQuerySet
 
 
+class AttributeUnavailable(Exception):
+    pass
+
+
 class SessionManager(object):
     def get_session(self):
         """Return current session for this context."""
@@ -289,7 +293,12 @@ class IdMapModel(object):
 
     def _promote(self, name, value):
         """set without marking attribute as dirty."""
-        object.__setattr__(self, name, value)
+        try:
+            values = self._values
+        except AttributeError:
+            values = {}
+            self._values = values
+        values[name] = value
 
     #def __setattr__(self, name, value):
     #    # We do this here to prevent instantiation of N dicts on a large load.
@@ -580,9 +589,11 @@ class ColumnDescriptor(object):
         :param instance: the model instance
         :type instance: Model
         """
-
         if instance:
-            return getattr(instance, self.column.column_name)
+            try:
+                return instance._values[self.column.column_name]
+            except (AttributeError, KeyError,):
+                raise AttributeUnavailable
         else:
             return self.query_evaluator
 

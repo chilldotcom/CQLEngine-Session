@@ -6,7 +6,7 @@ from cqlengine import columns
 from cqlengine.connection import setup
 from cqlengine.management import create_keyspace, delete_keyspace
 from cqlengine.query import DoesNotExist
-from cqlengine_session import clear, save, SessionModel
+from cqlengine_session import AttributeUnavailable, clear, save, SessionModel
 
 def groom_time(dtime):
     return datetime(*dtime.timetuple()[:6])
@@ -313,7 +313,7 @@ class BasicTestCase(BaseTestCase):
 
         # Get a blind handle to the object.
         todo = self.Todo(todo_key)
-        self.assertRaises(AttributeError, getattr, todo, 'title')
+        self.assertRaises(AttributeUnavailable, getattr, todo, 'title')
         # Load the data to this object.
         todo.get()
         self.assertEqual(todo.title, u'title')
