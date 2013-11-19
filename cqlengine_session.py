@@ -294,39 +294,16 @@ class IdMapModel(object):
     def _promote(self, name, value):
         """set without marking attribute as dirty."""
         try:
-            values = self._values
+            self._values[name] = value
         except AttributeError:
-            values = {}
-            self._values = values
-        values[name] = value
+            self._values = {name: value}
 
-    #def __setattr__(self, name, value):
-    #    # We do this here to prevent instantiation of N dicts on a large load.
-    #    col = self.id_mapped_class._columns.get(name, None)
-    #    if col is None:
-    #        return object.__setattr__(self, name, value)
-    #    try:
-    #        dirties = self._dirties
-    #    except AttributeError:
-    #        dirties = {}
-    #        object.__setattr__(self, '_dirties', dirties)
-    #    if isinstance(col, columns.BaseContainerColumn):
-    #        if isinstance(col, columns.Set):
-    #            value = OwnedSet(self, name, col.to_python(value))
-    #        elif isinstance(col, columns.List):
-    #            value = OwnedList(self, name, col.to_python(value))
-    #        elif isinstance(col, columns.Map):
-    #            value = OwnedMap(self, name, col.to_python(value))
-    #    dirties[name] = value
-    #    self._promote(name, value)
-
-    def _container_dirty(self, name, value):
+    def _mark_dirty(self, name, value):
+        """mark an attribute as dirty."""
         try:
-            dirties = self._dirties
+            self._dirties[name] = value
         except AttributeError:
-            dirties = {}
-            object.__setattr__(self, '_dirties', dirties)
-        dirties[name] = value
+            self._dirties = {name: value}
 
     @classmethod
     def sync_table(cls):
@@ -420,7 +397,7 @@ class OwnedSet(set):
         super(OwnedSet, self).__init__(*args, **kwargs)
 
     def mark_dirty(self):
-        self.owner._container_dirty(self.name, self)
+        self.owner._mark_dirty(self.name, self)
 
     def add(self, *args, **kwargs):
         self.mark_dirty()
@@ -481,7 +458,7 @@ class OwnedList(list):
         super(OwnedList, self).__init__(*args, **kwargs)
 
     def mark_dirty(self):
-        self.owner._container_dirty(self.name, self)
+        self.owner._mark_dirty(self.name, self)
 
     def __setitem__(self, *args, **kwargs):
         self.mark_dirty()
@@ -528,7 +505,7 @@ class OwnedMap(dict):
         super(OwnedMap, self).__init__(*args, **kwargs)
 
     def mark_dirty(self):
-        self.owner._container_dirty(self.name, self)
+        self.owner._mark_dirty(self.name, self)
 
     def __setitem__(self, *args, **kwargs):
         self.mark_dirty()
@@ -603,21 +580,16 @@ class ColumnDescriptor(object):
         TODO: use None instance to create update statements
         """
         if instance:
-            # We do this here to prevent instantiation of N dicts on a large load.
-            try:
-                dirties = instance._dirties
-            except AttributeError:
-                dirties = {}
-                object.__setattr__(instance, '_dirties', dirties)
-            name = self.column.column_name
-            if isinstance(self, columns.BaseContainerColumn):
-                if isinstance(self, columns.Set):
-                    value = OwnedSet(self, name, self.to_python(value))
-                elif isinstance(self, columns.List):
-                    value = OwnedList(self, name, self.to_python(value))
-                elif isinstance(self, columns.Map):
-                    value = OwnedMap(self, name, self.to_python(value))
-            dirties[name] = value
+            col = self.column
+            name = col.column_name
+            if isinstance(col, columns.BaseContainerColumn):
+                if isinstance(col, columns.Set):
+                    value = OwnedSet(instance, name, col.to_python(value))
+                elif isinstance(col, columns.List):
+                    value = OwnedList(instance, name, col.to_python(value))
+                elif isinstance(col, columns.Map):
+                    value = OwnedMap(instance, name, col.to_python(value))
+            instance._mark_dirty(name, value)
             instance._promote(name, value)
         else:
             raise AttributeError('cannot reassign column values')
