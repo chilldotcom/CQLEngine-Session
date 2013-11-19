@@ -463,6 +463,7 @@ class OwnedSet(set):
         self.mark_dirty()
         return super(OwnedSet, self).update(*args, **kwargs)
 
+
 class OwnedList(list):
 
     def __init__(self, owner, name, *args, **kwargs):
@@ -472,6 +473,14 @@ class OwnedList(list):
 
     def mark_dirty(self):
         self.owner._container_dirty(self.name, self)
+
+    def __setitem__(self, *args, **kwargs):
+        self.mark_dirty()
+        return super(OwnedList, self).__setitem__(*args, **kwargs)
+
+    def __setslice__(self, *args, **kwargs):
+        self.mark_dirty()
+        return super(OwnedList, self).__setslice__(*args, **kwargs)
 
     def append(self, *args, **kwargs):
         self.mark_dirty()
@@ -493,8 +502,14 @@ class OwnedList(list):
         self.mark_dirty()
         return super(OwnedList, self).remove(*args, **kwargs)
 
-#    raise #xxx is extend an update?
- #   raise # are reverse and sort side-efffecters?
+    def reverse(self, *args, **kwargs):
+        self.mark_dirty()
+        return super(OwnedList, self).reverse(*args, **kwargs)
+
+    def sort(self, *args, **kwargs):
+        self.mark_dirty()
+        return super(OwnedList, self).sort(*args, **kwargs)
+
 
 class OwnedMap(dict):
 
@@ -505,6 +520,10 @@ class OwnedMap(dict):
 
     def mark_dirty(self):
         self.owner._container_dirty(self.name, self)
+
+    def __setitem__(self, *args, **kwargs):
+        self.mark_dirty()
+        return super(OwnedMap, self).__setitem__(*args, **kwargs)
 
     def clear(self, *args, **kwargs):
         self.mark_dirty()
@@ -532,8 +551,9 @@ class OwnedMap(dict):
         self.mark_dirty()
         return super(OwnedMap, self).remove(*args, **kwargs)
 
-#fromkeys
-#setdefault
+    def setdefault(self, *args, **kwargs):
+        self.mark_dirty()
+        return super(OwnedMap, self).setdefault(*args, **kwargs)
 
 
 class ColumnDescriptor(object):
