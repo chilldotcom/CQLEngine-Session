@@ -501,5 +501,14 @@ class SubClassTestCase(BaseTestCase):
         assert todo.this_is_a_class_method() == 2
 
         assert todo.overloaded == 'todo'
+        key = todo.uuid
+        save()
+        clear()
+        todo = self.Todo(todo.uuid)
+        todo.title = 'testtitle'
+        save()
+        clear()
+        todo = self.Todo.objects(uuid=key).get()
+        assert todo.title == 'testtitle'
 
 
