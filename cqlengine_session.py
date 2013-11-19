@@ -152,7 +152,6 @@ class Session(object):
 class SessionModelMetaClass(ModelMetaClass):
 
     def __new__(cls, name, bases, attrs):
-        print '{} {} {} {}'.format(cls, name, bases, len(attrs))
         if attrs.get('__abstract__'):
             return super(SessionModelMetaClass, cls).__new__(cls,
                                                              name,
@@ -174,10 +173,6 @@ class SessionModelMetaClass(ModelMetaClass):
 
         these_attrs = {
             'id_mapped_class': base,
-            # For convenience, some of the base attrs are here too.
-#            '_columns': base._columns,
-#            '_primary_keys': base._primary_keys,
-#            '_has_counter': base._has_counter
         }
         # Make descriptors for the columns so the instances will get/set
         # using a ColumnDescriptor instance.
