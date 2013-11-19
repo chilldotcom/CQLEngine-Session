@@ -424,6 +424,12 @@ class IntrospectionTestCase(BaseTestCase):
                      'MultiTodo': make_multi_key_model,
                      'Counter': make_counter_model}
 
+    def test_type(self):
+        from cqlengine_session import IdMapMetaClass
+        assert isinstance(self.Todo, IdMapMetaClass)
+        assert isinstance(self.MultiTodo, IdMapMetaClass)
+        assert isinstance(self.Counter, IdMapMetaClass)
+
     def test_class_vars(self):
         assert self.Todo.uuid
         assert self.Todo.title

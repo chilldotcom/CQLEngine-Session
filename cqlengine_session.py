@@ -152,7 +152,7 @@ class Session(object):
 class SessionModelMetaClass(ModelMetaClass):
 
     def __new__(cls, name, bases, attrs):
-#        if name == 'SessionModel':
+        print '{} {} {} {}'.format(cls, name, bases, len(attrs))
         if attrs.get('__abstract__'):
             return super(SessionModelMetaClass, cls).__new__(cls,
                                                              name,
@@ -181,8 +181,8 @@ class SessionModelMetaClass(ModelMetaClass):
         }
         # Make descriptors for the columns so the instances will get/set
         # using a ColumnDescriptor instance.
-        for name, col in base._columns.iteritems():
-            new_attrs[name] = ColumnDescriptor(col)
+        for col_name, col in base._columns.iteritems():
+            new_attrs[col_name] = ColumnDescriptor(col)
 
         stand_in = IdMapMetaClass(name, (IdMapModel,), new_attrs)
         return stand_in
