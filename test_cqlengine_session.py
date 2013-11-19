@@ -78,6 +78,36 @@ def make_counter_model():
 
     return TestCounterModel
 
+def make_subclass_model():
+    class FirstIntermediateTodo(SessionModel):
+        __abstract__ = True
+        base_text = columns.Text()
+        this_is_a_class_var = 'classvar'
+
+        @classmethod
+        def this_is_a_class_method(cls):
+            return 1
+
+        overloaded = 'first'
+
+    class SecondIntermediateTodo(FirstIntermediateTodo):
+        __abstract__ = True
+        base_text = columns.Text()
+        overloaded = 'second'
+        @classmethod
+        def this_is_a_class_method(cls):
+            return 2
+
+    class Todo(SecondIntermediateTodo):
+        uuid = columns.UUID(primary_key=True, default=uuid.uuid4)
+        title = columns.Text(max_length=60)
+        text = columns.Text()
+        done = columns.Boolean()
+        pub_date = columns.DateTime()
+        overloaded = 'todo'
+
+    return Todo
+
 class BaseTestCase(unittest.TestCase):
 
     model_classes = {}
@@ -458,5 +488,18 @@ class IntrospectionTestCase(BaseTestCase):
         assert 2 == len(self.Counter._primary_keys)
         assert [('partition', self.Counter.partition),
                 ('cluster', self.Counter.cluster)] == list(self.Counter._primary_keys.iteritems())
+
+class SubClassTestCase(BaseTestCase):
+
+    model_classes = {'Todo': make_subclass_model}
+
+    def test_class_vars(self):
+        assert self.Todo.this_is_a_class_var == 'classvar'
+        assert self.Todo.this_is_a_class_method() == 2
+        todo = self.Todo.create()
+        assert todo.this_is_a_class_var == 'classvar'
+        assert todo.this_is_a_class_method() == 2
+
+        assert todo.overloaded == 'todo'
 
 

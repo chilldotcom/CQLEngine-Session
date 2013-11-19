@@ -172,19 +172,34 @@ class SessionModelMetaClass(ModelMetaClass):
         module = importlib.import_module(cls.__module__)
         setattr(module, new_name, base)
 
-        new_attrs = {
+        these_attrs = {
             'id_mapped_class': base,
             # For convenience, some of the base attrs are here too.
-            '_columns': base._columns,
-            '_primary_keys': base._primary_keys,
-            '_has_counter': base._has_counter
+#            '_columns': base._columns,
+#            '_primary_keys': base._primary_keys,
+#            '_has_counter': base._has_counter
         }
         # Make descriptors for the columns so the instances will get/set
         # using a ColumnDescriptor instance.
         for col_name, col in base._columns.iteritems():
-            new_attrs[col_name] = ColumnDescriptor(col)
+            these_attrs[col_name] = ColumnDescriptor(col)
 
-        stand_in = IdMapMetaClass(name, (IdMapModel,), new_attrs)
+        # Any attr we did not define ourself, copy from the cqlengine class.
+        # (I suspect this is not quite right, perhaps we should ditch
+        # the metaclass hackery and require you to use another way of
+        # using a cqlengine declaration. - MEC)
+        base_attrs = {}
+        for klass in reversed(bases):
+            for sub_klass in reversed(klass.mro()):
+                base_attrs.update(sub_klass.__dict__)
+        base_attrs.update(attrs)
+        base_attrs.update(these_attrs)
+        for key in IdMapModel.__dict__.keys():
+            try:
+                del base_attrs[key]
+            except KeyError:
+                pass
+        stand_in = IdMapMetaClass(name, (IdMapModel,), base_attrs)
         return stand_in
 
 
