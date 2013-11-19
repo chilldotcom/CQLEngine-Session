@@ -194,6 +194,12 @@ class SessionModelMetaClass(ModelMetaClass):
                 del base_attrs[key]
             except KeyError:
                 pass
+        # These are not available on SessionModel objects.
+        for key in ['update', 'save']:
+            try:
+                del base_attrs[key]
+            except KeyError:
+                pass
         stand_in = IdMapMetaClass(name, (IdMapModel,), base_attrs)
         return stand_in
 
