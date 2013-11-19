@@ -70,7 +70,13 @@ def make_no_default_multi_key_model():
 
     return Todo
 
+def make_counter_model():
+    class TestCounterModel(SessionModel):
+        partition = columns.UUID(primary_key=True, default=uuid.uuid4)
+        cluster = columns.UUID(primary_key=True, default=uuid.uuid4)
+        counter = columns.Counter()
 
+    return TestCounterModel
 
 class BaseTestCase(unittest.TestCase):
 
@@ -411,3 +417,40 @@ class MultiKeyTestCase(BaseTestCase):
                                   pub_date=new_cluster2).get()
         assert todo4.pub_date == new_cluster2
         self.assertIs(todo2, todo4)
+
+class IntrospectionTestCase(BaseTestCase):
+
+    model_classes = {'Todo': make_todo_model,
+                     'MultiTodo': make_multi_key_model,
+                     'Counter': make_counter_model}
+
+    def test_class_vars(self):
+        assert self.Todo.uuid
+        assert self.Todo.title
+        assert self.Todo.text
+        assert self.Todo.done
+        assert self.Todo.pub_date
+        assert not self.Todo._has_counter
+        assert 1 == len(self.Todo._primary_keys)
+        assert self.Todo._primary_keys['uuid'] == self.Todo.uuid
+
+        assert self.MultiTodo.uuid
+        assert self.MultiTodo.title
+        assert self.MultiTodo.text
+        assert self.MultiTodo.done
+        assert self.MultiTodo.pub_date
+        assert not self.MultiTodo._has_counter
+        assert 3 == len(self.MultiTodo._primary_keys)
+        assert [('partition', self.MultiTodo.partition),
+                ('uuid', self.MultiTodo.uuid),
+                ('pub_date', self.MultiTodo.pub_date)] == list(self.MultiTodo._primary_keys.iteritems())
+
+        assert self.Counter.partition
+        assert self.Counter.cluster
+        assert self.Counter.counter
+        assert self.Counter._has_counter
+        assert 2 == len(self.Counter._primary_keys)
+        assert [('partition', self.Counter.partition),
+                ('cluster', self.Counter.cluster)] == list(self.Counter._primary_keys.iteritems())
+
+

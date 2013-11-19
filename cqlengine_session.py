@@ -32,7 +32,7 @@ import threading
 from cqlengine import columns
 from cqlengine.exceptions import ValidationError
 from cqlengine.management import sync_table
-from cqlengine.models import BaseModel, ModelMetaClass
+from cqlengine.models import BaseModel, ColumnQueryEvaluator, ModelMetaClass
 from cqlengine.query import BatchQuery, ModelQuerySet
 
 
@@ -167,9 +167,20 @@ class SessionModelMetaClass(ModelMetaClass):
         # cqlengine.models.ModelMetaClass
         module = importlib.import_module(cls.__module__)
         setattr(module, new_name, base)
-        stand_in = IdMapMetaClass(name, (IdMapModel,), {
-            'id_mapped_class': base
-        })
+
+        new_attrs = {
+            'id_mapped_class': base,
+            # For convenience, some of the base attrs are here too.
+            '_columns': base._columns,
+            '_primary_keys': base._primary_keys,
+            '_has_counter': base._has_counter
+        }
+        # Make descriptors for the columns so the instances will get/set
+        # using a ColumnDescriptor instance.
+        for name, col in base._columns.iteritems():
+            new_attrs[name] = ColumnDescriptor(col)
+
+        stand_in = IdMapMetaClass(name, (IdMapModel,), new_attrs)
         return stand_in
 
 
@@ -213,7 +224,7 @@ class IdMapModel(object):
         self.key = key
         key_names = self.id_mapped_class._primary_keys.keys()
         for name, value in zip(key_names, key):
-            self.promote(name, value)
+            self._promote(name, value)
 
     @classmethod
     def all(cls):
@@ -273,34 +284,34 @@ class IdMapModel(object):
                     value = OwnedMap(instance, name, col.to_python(value))
             elif value is not None:
                 value = col.to_python(value)
-            instance.promote(name, value)
+            instance._promote(name, value)
         return instance
 
-    def promote(self, name, value):
+    def _promote(self, name, value):
         """set without marking attribute as dirty."""
         object.__setattr__(self, name, value)
 
-    def __setattr__(self, name, value):
-        # We do this here to prevent instantiation of N dicts on a large load.
-        col = self.id_mapped_class._columns.get(name, None)
-        if col is None:
-            return object.__setattr__(self, name, value)
-        try:
-            dirties = self._dirties
-        except AttributeError:
-            dirties = {}
-            object.__setattr__(self, '_dirties', dirties)
-        if isinstance(col, columns.BaseContainerColumn):
-            if isinstance(col, columns.Set):
-                value = OwnedSet(self, name, col.to_python(value))
-            elif isinstance(col, columns.List):
-                value = OwnedList(self, name, col.to_python(value))
-            elif isinstance(col, columns.Map):
-                value = OwnedMap(self, name, col.to_python(value))
-        dirties[name] = value
-        self.promote(name, value)
+    #def __setattr__(self, name, value):
+    #    # We do this here to prevent instantiation of N dicts on a large load.
+    #    col = self.id_mapped_class._columns.get(name, None)
+    #    if col is None:
+    #        return object.__setattr__(self, name, value)
+    #    try:
+    #        dirties = self._dirties
+    #    except AttributeError:
+    #        dirties = {}
+    #        object.__setattr__(self, '_dirties', dirties)
+    #    if isinstance(col, columns.BaseContainerColumn):
+    #        if isinstance(col, columns.Set):
+    #            value = OwnedSet(self, name, col.to_python(value))
+    #        elif isinstance(col, columns.List):
+    #            value = OwnedList(self, name, col.to_python(value))
+    #        elif isinstance(col, columns.Map):
+    #            value = OwnedMap(self, name, col.to_python(value))
+    #    dirties[name] = value
+    #    self._promote(name, value)
 
-    def container_dirty(self, name, value):
+    def _container_dirty(self, name, value):
         try:
             dirties = self._dirties
         except AttributeError:
@@ -342,7 +353,7 @@ class IdMapModel(object):
             dirties = EMPTY
         for name, value in cleaned_values.items():
             if name not in primary_keys and name not in dirties:
-                instance.promote(name, value)
+                instance._promote(name, value)
         return instance
 
     @property
@@ -400,7 +411,7 @@ class OwnedSet(set):
         super(OwnedSet, self).__init__(*args, **kwargs)
 
     def mark_dirty(self):
-        self.owner.container_dirty(self.name, self)
+        self.owner._container_dirty(self.name, self)
 
     def add(self, *args, **kwargs):
         self.mark_dirty()
@@ -460,7 +471,7 @@ class OwnedList(list):
         super(OwnedList, self).__init__(*args, **kwargs)
 
     def mark_dirty(self):
-        self.owner.container_dirty(self.name, self)
+        self.owner._container_dirty(self.name, self)
 
     def append(self, *args, **kwargs):
         self.mark_dirty()
@@ -493,7 +504,7 @@ class OwnedMap(dict):
         super(OwnedMap, self).__init__(*args, **kwargs)
 
     def mark_dirty(self):
-        self.owner.container_dirty(self.name, self)
+        self.owner._container_dirty(self.name, self)
 
     def clear(self, *args, **kwargs):
         self.mark_dirty()
@@ -523,6 +534,73 @@ class OwnedMap(dict):
 
 #fromkeys
 #setdefault
+
+
+class ColumnDescriptor(object):
+    """
+    Handles the reading and writing of column values to and from
+    a model instance's value manager, as well as creating
+    comparator queries
+    """
+
+    def __init__(self, column):
+        """
+        :param column:
+        :type column: columns.Column
+        :return:
+        """
+        self.column = column
+        self.query_evaluator = ColumnQueryEvaluator(self.column)
+
+    def __get__(self, instance, owner):
+        """
+        Returns either the value or column, depending
+        on if an instance is provided or not
+
+        :param instance: the model instance
+        :type instance: Model
+        """
+
+        if instance:
+            return getattr(instance, self.column.column_name)
+        else:
+            return self.query_evaluator
+
+    def __set__(self, instance, value):
+        """
+        Sets the value on an instance, raises an exception with classes
+        TODO: use None instance to create update statements
+        """
+        if instance:
+            # We do this here to prevent instantiation of N dicts on a large load.
+            try:
+                dirties = instance._dirties
+            except AttributeError:
+                dirties = {}
+                object.__setattr__(instance, '_dirties', dirties)
+            name = self.column.column_name
+            if isinstance(self, columns.BaseContainerColumn):
+                if isinstance(self, columns.Set):
+                    value = OwnedSet(self, name, self.to_python(value))
+                elif isinstance(self, columns.List):
+                    value = OwnedList(self, name, self.to_python(value))
+                elif isinstance(self, columns.Map):
+                    value = OwnedMap(self, name, self.to_python(value))
+            dirties[name] = value
+            instance._promote(name, value)
+        else:
+            raise AttributeError('cannot reassign column values')
+
+    def __delete__(self, instance):
+        """
+        Sets the column value to None, if possible
+        """
+        if instance:
+            if self.column.can_delete:
+                raise NotImplementedError
+            else:
+                raise AttributeError('cannot delete {} columns'.format(self.column.column_name))
+
 
 class Empty(object):
     def __contains__(self, item):
