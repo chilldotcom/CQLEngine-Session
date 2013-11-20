@@ -510,5 +510,7 @@ class SubClassTestCase(BaseTestCase):
         clear()
         todo = self.Todo.objects(uuid=key).get()
         assert todo.title == 'testtitle'
+        todo.title = 'testtitle2'
+        save()
 
 
