@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 import unittest
 import uuid
 from uuid import UUID
@@ -116,17 +116,22 @@ def make_default_todo_model():
         done = columns.Boolean()
         pub_date = columns.DateTime()
         # One column type of each type that has its own validation method.
+        bytes = columns.Bytes(default=b'xyz')
         ascii = columns.Ascii(default='default ascii')
         text = columns.Text(default=u'default text')
         integer = columns.Integer(default=42)
+        bigint = columns.BigInt(default=55)
         varint = columns.VarInt(default=22)
         uuid2 = columns.UUID(default=UUID('3ba7a823-52cd-11e3-8d17-c8e0eb16059b'))
         float = columns.Float(default=3.1459)
         decimal = columns.Decimal(default=12.345)
+        date = columns.Date(default=now)
+        datetime = columns.DateTime(default=now)
+        timeuuid = columns.TimeUUID(default=UUID('d16f1c47-52fa-11e3-9057-c8e0eb16059b'))
+        boolean = columns.Boolean(default=True)
         #set = columns.Set(columns.Integer, default={1,2,3})
         #list = columns.List(columns.Integer, default=[1,2,3])
         #map = columns.Map(columns.Text, columns.Integer, default={'a': 1, 'b': 2})
-
     return Todo
 
 def make_required_todo_model():
@@ -135,13 +140,19 @@ def make_required_todo_model():
         title = columns.Text(max_length=60)
         done = columns.Boolean()
         pub_date = columns.DateTime()
+        bytes = columns.Bytes(required=True)
         ascii = columns.Ascii(required=True)
         text = columns.Text(required=True)
         integer = columns.Integer(required=True)
+        bigint = columns.BigInt(required=True)
         varint = columns.VarInt(required=True)
         uuid2 = columns.UUID(required=True)
         float = columns.Float(required=True)
         decimal = columns.Decimal(required=True)
+        datetime = columns.DateTime(required=True)
+        date = columns.Date(required=True)
+        timeuuid = columns.TimeUUID(required=True)
+        boolean = columns.Boolean(required=True)
 
     return Todo
 
@@ -414,14 +425,23 @@ class TestDefaultCase(BaseTestCase):
     def test_blind_update_default(self):
         """ tests blind update won't clobber existing values with a default """
         non_default_uuid = uuid.uuid4()
+        non_default_timeuuid = uuid.uuid1()
+        dtime = now()
+        d = now().date()
         m0 = self.Todo.create(
+            bytes=b'notdefault',
             ascii='not default',
             text=u'not default',
             integer=105,
+            bigint=222,
             varint=202,
             uuid2=non_default_uuid,
             float=22.44,
-            decimal=44.22)
+            decimal=44.22,
+            datetime=dtime,
+            date=d,
+            timeuuid=non_default_timeuuid,
+            boolean=False)
         key = m0.uuid
         save()
         clear()
@@ -433,13 +453,19 @@ class TestDefaultCase(BaseTestCase):
         clear()
 
         m2 = self.Todo(key).get()
+        assert m2.bytes == b'notdefault'
         assert m2.ascii == 'not default'
         assert m2.text == u'not default'
         assert m2.integer == 105
+        assert m2.bigint == 222
         assert m2.varint == 202
         assert m2.uuid2 == non_default_uuid
         assert m2.float == 22.44
         assert m2.decimal == 44.22
+        assert m2.datetime == dtime
+        assert m2.date == d
+        assert m2.timeuuid == non_default_timeuuid
+        assert m2.boolean == False
 
         # non-blind update.
         m2.pub_date = now()
@@ -447,13 +473,19 @@ class TestDefaultCase(BaseTestCase):
         clear()
 
         m3 = self.Todo(key).get()
+        assert m3.bytes == b'notdefault'
         assert m3.ascii == 'not default'
         assert m3.text == u'not default'
         assert m3.integer == 105
+        assert m3.bigint == 222
         assert m3.varint == 202
         assert m3.uuid2 == non_default_uuid
         assert m3.float == 22.44
         assert m3.decimal == 44.22
+        assert m3.datetime == dtime
+        assert m3.date == d
+        assert m3.timeuuid == non_default_timeuuid
+        assert m3.boolean == False
 
 class TestRequiredCase(BaseTestCase):
 
@@ -462,14 +494,22 @@ class TestRequiredCase(BaseTestCase):
     def test_blind_update_required(self):
         """ tests blind update won't complain about required values """
         non_default_uuid = uuid.uuid4()
+        non_default_timeuuid = uuid.uuid1()
+        dtime = now()
         m0 = self.Todo.create()
+        m0.bytes = b'required'
         m0.ascii = 'required ascii'
         m0.text = u'required text'
         m0.integer = 105
+        m0.bigint = 222
         m0.varint = 202
         m0.uuid2 = non_default_uuid
         m0.float = 22.44
         m0.decimal = 44.22
+        m0.datetime = dtime
+        m0.date = dtime.date()
+        m0.timeuuid = non_default_timeuuid
+        m0.boolean = True
         key = m0.uuid
         save()
         clear()
@@ -481,13 +521,19 @@ class TestRequiredCase(BaseTestCase):
         clear()
 
         m2 = self.Todo(key).get()
+        assert m0.bytes == b'required'
         assert m0.ascii == 'required ascii'
         assert m0.text == u'required text'
         assert m0.integer == 105
+        assert m0.bigint == 222
         assert m0.varint == 202
         assert m0.uuid2 == non_default_uuid
         assert m0.float == 22.44
         assert m0.decimal == 44.22
+        assert m0.datetime == dtime
+        assert m0.date == dtime.date()
+        assert m0.timeuuid == non_default_timeuuid
+        assert m0.boolean == True
 
 
 class NoDefaultTestCase(BaseTestCase):
@@ -632,6 +678,6 @@ class SubClassTestCase(BaseTestCase):
         assert todo.title == 'testtitle'
         todo.title = 'testtitle2'
         save()
-        
+
 
 

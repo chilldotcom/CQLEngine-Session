@@ -27,6 +27,7 @@ foo = Foo.create()
 """
 
 import copy
+from datetime import date, datetime
 import importlib
 import threading
 from uuid import UUID
@@ -637,12 +638,19 @@ EMPTY = Empty()
 
 
 NON_NONE_BY_COLUMN = {
+    columns.Ascii: '__non_none__',
+    columns.Bytes: b'__non_none__',
     columns.Text: u'__non_none__',
     columns.Integer: 314159,
+    columns.BigInt: 54321,
     columns.VarInt: 628318,
     columns.UUID: UUID('3ba7a823-52cd-11e3-8d17-c8e0eb16059b'),
     columns.Float: 3.1459,
-    columns.Decimal: 12.345
+    columns.Decimal: 12.345,
+    columns.DateTime: datetime(1, 1, 1),
+    columns.Date: date(2, 2, 2),
+    columns.TimeUUID: UUID('d0a84a9e-52fa-11e3-ad4c-c8e0eb16059b'),
+    columns.Boolean: False,
 }
 
 def get_non_none_for_column(col):
