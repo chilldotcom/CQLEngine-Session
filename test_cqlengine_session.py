@@ -632,7 +632,6 @@ class SubClassTestCase(BaseTestCase):
         assert todo.title == 'testtitle'
         todo.title = 'testtitle2'
         save()
-        #xxx todo do isinstance and issubclass tests here.
-
+        
 
 

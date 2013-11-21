@@ -173,6 +173,8 @@ class SessionModelMetaClass(ModelMetaClass):
                                                              name,
                                                              bases,
                                                              attrs)
+        if len(bases) > 1:
+            raise TypeError('SessionModel does not allow multiple inheritance')
         # Take the result of the base class's __new__ and assign it to the
         # module using a prefixed underscore in the name.
         new_name = '_' + name
@@ -187,40 +189,23 @@ class SessionModelMetaClass(ModelMetaClass):
         module = importlib.import_module(cls.__module__)
         setattr(module, new_name, base)
 
-        these_attrs = {
-            'id_mapped_class': base,
-        }
+        # Copy attrs from the base class because this class won't actually
+        # inherit from these base classes.
+        base_attrs = {}
+        copyable_bases = []
+        for klass in bases[0].mro():
+            if klass == SessionModel:
+                break
+            copyable_bases.append(klass)
+        for klass in reversed(copyable_bases):
+            base_attrs.update(klass.__dict__)
+        base_attrs.update(attrs)
+        base_attrs['id_mapped_class'] = base
         # Make descriptors for the columns so the instances will get/set
         # using a ColumnDescriptor instance.
         for col_name, col in base._columns.iteritems():
-            these_attrs[col_name] = ColumnDescriptor(col)
-
-        # Any attr we did not define ourself, copy from the cqlengine class.
-        # (I suspect this is not quite right, perhaps we should ditch
-        # the metaclass hackery and require you to use another way of
-        # using a cqlengine declaration. - MEC)
-        base_attrs = {}
-        # TODO: instead, see if the bases can be added to the tuple holding
-        # IdMapModel below.
-        for klass in reversed(bases):
-            for sub_klass in reversed(klass.mro()):
-                base_attrs.update(sub_klass.__dict__)
-        base_attrs.update(attrs)
-        base_attrs.update(these_attrs)
-        for key in IdMapModel.__dict__.keys():
-            try:
-                del base_attrs[key]
-            except KeyError:
-                pass
-        # These are not available on SessionModel objects.
-        # TODO: implement on session model with raise NotImplementedError
-        for key in ['update', 'save']:
-            try:
-                del base_attrs[key]
-            except KeyError:
-                pass
-        stand_in = IdMapMetaClass(name, (IdMapModel,), base_attrs)
-        return stand_in
+            base_attrs[col_name] = ColumnDescriptor(col)
+        return IdMapMetaClass(name, (IdMapModel,), base_attrs)
 
 
 # declare your models with this so that SessionModelMetaClass is the metaclass.
@@ -229,6 +214,10 @@ class SessionModel(BaseModel):
     __metaclass__ = SessionModelMetaClass
 
 class IdMapMetaClass(type):
+
+#    def __new__(cls, name, bases, attrs):
+#        return None
+#        return type(name, bases, attrs)
 
     def __call__(cls, *key):
         """If instance is in the id-map, return it, else make and return it."""
