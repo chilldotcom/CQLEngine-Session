@@ -29,6 +29,8 @@ foo = Foo.create()
 import copy
 import importlib
 import threading
+from uuid import UUID
+
 from cqlengine import columns
 from cqlengine.exceptions import ValidationError
 from cqlengine.management import sync_table
@@ -120,11 +122,25 @@ class Session(object):
                 arg = {name: getattr(create, name) for name in key_names}
                 create.id_mapped_class.batch(batch).create(**arg)
             for update in updates:
-                key_names = update.id_mapped_class._primary_keys.keys()
+                key_names = update._primary_keys.keys()
                 arg = {name: getattr(update, name) for name in key_names}
                 cqlengine_instance = update.id_mapped_class(**arg)
-                for name, value in update._dirties.items():
+                dirties = update._dirties
+                for name, value in dirties.items():
                     setattr(cqlengine_instance, name, value)
+                # For a blind update to run without complaint or error,
+                # default-having and required fields that we are not setting
+                # need to appear to have an unchanged value.
+                for name, col in update._columns.items():
+                    if name not in dirties and name not in key_names:
+                        if col.default or col.required:
+                            # place identical non-None values in the
+                            # ValueManager's value and previous_value
+                            # attributes.
+                            manager = cqlengine_instance._values[name]
+                            non_none = get_non_none_for_column(col)
+                            manager.value = non_none
+                            manager.previous_value = non_none
                 del update._dirties
                 cqlengine_instance.batch(batch).update()
         # It would seem that batch does not work with counter?
@@ -184,6 +200,8 @@ class SessionModelMetaClass(ModelMetaClass):
         # the metaclass hackery and require you to use another way of
         # using a cqlengine declaration. - MEC)
         base_attrs = {}
+        # TODO: instead, see if the bases can be added to the tuple holding
+        # IdMapModel below.
         for klass in reversed(bases):
             for sub_klass in reversed(klass.mro()):
                 base_attrs.update(sub_klass.__dict__)
@@ -195,6 +213,7 @@ class SessionModelMetaClass(ModelMetaClass):
             except KeyError:
                 pass
         # These are not available on SessionModel objects.
+        # TODO: implement on session model with raise NotImplementedError
         for key in ['update', 'save']:
             try:
                 del base_attrs[key]
@@ -626,3 +645,17 @@ class Empty(object):
         return False
 
 EMPTY = Empty()
+
+
+NON_NONE_BY_COLUMN = {
+    columns.Text: u'__non_none__',
+    columns.Integer: 314159,
+    columns.VarInt: 628318,
+    columns.UUID: UUID('3ba7a823-52cd-11e3-8d17-c8e0eb16059b'),
+    columns.Float: 3.1459,
+    columns.Decimal: 12.345
+}
+
+def get_non_none_for_column(col):
+    return NON_NONE_BY_COLUMN.get(type(col), u'__non_none_default__')
+
