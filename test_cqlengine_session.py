@@ -128,7 +128,7 @@ def make_default_todo_model():
         date = columns.Date(default=now)
         datetime = columns.DateTime(default=now)
         timeuuid = columns.TimeUUID(default=UUID('d16f1c47-52fa-11e3-9057-c8e0eb16059b'))
-        boolean = columns.Boolean(default=True)
+        boolean = columns.Boolean(default=False)
         setcol = columns.Set(columns.Integer, default={1,2,3})
         listcol = columns.List(columns.Integer, default=[1,2,3])
         mapcol = columns.Map(columns.Text, columns.Integer, default={'a': 1, 'b': 2})
@@ -442,7 +442,7 @@ class TestDefaultCase(BaseTestCase):
             datetime=dtime,
             date=d,
             timeuuid=non_default_timeuuid,
-            boolean=False,
+            boolean=True,
             setcol={3, 4},
             listcol=[5, 6],
             mapcol={'x': 15})
@@ -469,7 +469,7 @@ class TestDefaultCase(BaseTestCase):
         assert m2.datetime == dtime
         assert m2.date == d
         assert m2.timeuuid == non_default_timeuuid
-        assert m2.boolean == False
+        assert m2.boolean == True
         assert m2.setcol == {3, 4}
         assert m2.listcol == [5, 6]
         assert m2.mapcol == {'x': 15}
@@ -492,7 +492,7 @@ class TestDefaultCase(BaseTestCase):
         assert m3.datetime == dtime
         assert m3.date == d
         assert m3.timeuuid == non_default_timeuuid
-        assert m3.boolean == False
+        assert m3.boolean == True
         assert m3.setcol == {3, 4}
         assert m3.listcol == [5, 6]
         assert m3.mapcol == {'x': 15}

@@ -134,7 +134,7 @@ class Session(object):
                 # need to appear to have an unchanged value.
                 for name, col in update._columns.items():
                     if name not in dirties and name not in key_names:
-                        if col.default or col.required:
+                        if col.default is not None or col.required:
                             # place identical non-None values in the
                             # ValueManager's value and previous_value
                             # attributes.
