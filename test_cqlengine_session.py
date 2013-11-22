@@ -129,9 +129,9 @@ def make_default_todo_model():
         datetime = columns.DateTime(default=now)
         timeuuid = columns.TimeUUID(default=UUID('d16f1c47-52fa-11e3-9057-c8e0eb16059b'))
         boolean = columns.Boolean(default=True)
-        #set = columns.Set(columns.Integer, default={1,2,3})
-        #list = columns.List(columns.Integer, default=[1,2,3])
-        #map = columns.Map(columns.Text, columns.Integer, default={'a': 1, 'b': 2})
+        setcol = columns.Set(columns.Integer, default={1,2,3})
+        listcol = columns.List(columns.Integer, default=[1,2,3])
+        mapcol = columns.Map(columns.Text, columns.Integer, default={'a': 1, 'b': 2})
     return Todo
 
 def make_required_todo_model():
@@ -153,6 +153,9 @@ def make_required_todo_model():
         date = columns.Date(required=True)
         timeuuid = columns.TimeUUID(required=True)
         boolean = columns.Boolean(required=True)
+        setcol = columns.Set(columns.Integer, required=True)
+        listcol = columns.List(columns.Integer, required=True)
+        mapcol = columns.Map(columns.Text, columns.Integer, required=True)
 
     return Todo
 
@@ -185,8 +188,6 @@ class BasicTestCase(BaseTestCase):
 
         todo = self.Todo.create(title='first', text='text1')
         todo_key = todo.uuid
-        print '----------------------------------------'
-        print 'todo_key {}'.format(todo_key)
         self.assertTrue(isinstance(todo_key, uuid.UUID))
         self.assertEqual(todo.title, 'first')
         self.assertEqual(todo.text, 'text1')
@@ -441,7 +442,10 @@ class TestDefaultCase(BaseTestCase):
             datetime=dtime,
             date=d,
             timeuuid=non_default_timeuuid,
-            boolean=False)
+            boolean=False,
+            setcol={3, 4},
+            listcol=[5, 6],
+            mapcol={'x': 15})
         key = m0.uuid
         save()
         clear()
@@ -466,6 +470,9 @@ class TestDefaultCase(BaseTestCase):
         assert m2.date == d
         assert m2.timeuuid == non_default_timeuuid
         assert m2.boolean == False
+        assert m2.setcol == {3, 4}
+        assert m2.listcol == [5, 6]
+        assert m2.mapcol == {'x': 15}
 
         # non-blind update.
         m2.pub_date = now()
@@ -486,6 +493,10 @@ class TestDefaultCase(BaseTestCase):
         assert m3.date == d
         assert m3.timeuuid == non_default_timeuuid
         assert m3.boolean == False
+        assert m3.setcol == {3, 4}
+        assert m3.listcol == [5, 6]
+        assert m3.mapcol == {'x': 15}
+
 
 class TestRequiredCase(BaseTestCase):
 
@@ -510,6 +521,9 @@ class TestRequiredCase(BaseTestCase):
         m0.date = dtime.date()
         m0.timeuuid = non_default_timeuuid
         m0.boolean = True
+        m0.setcol = {1}
+        m0.listcol = [1]
+        m0.mapcol = {'a': 22}
         key = m0.uuid
         save()
         clear()
@@ -521,19 +535,22 @@ class TestRequiredCase(BaseTestCase):
         clear()
 
         m2 = self.Todo(key).get()
-        assert m0.bytes == b'required'
-        assert m0.ascii == 'required ascii'
-        assert m0.text == u'required text'
-        assert m0.integer == 105
-        assert m0.bigint == 222
-        assert m0.varint == 202
-        assert m0.uuid2 == non_default_uuid
-        assert m0.float == 22.44
-        assert m0.decimal == 44.22
-        assert m0.datetime == dtime
-        assert m0.date == dtime.date()
-        assert m0.timeuuid == non_default_timeuuid
-        assert m0.boolean == True
+        assert m2.bytes == b'required'
+        assert m2.ascii == 'required ascii'
+        assert m2.text == u'required text'
+        assert m2.integer == 105
+        assert m2.bigint == 222
+        assert m2.varint == 202
+        assert m2.uuid2 == non_default_uuid
+        assert m2.float == 22.44
+        assert m2.decimal == 44.22
+        assert m2.datetime == dtime
+        assert m2.date == dtime.date()
+        assert m2.timeuuid == non_default_timeuuid
+        assert m2.boolean == True
+        assert m2.setcol == {1}
+        assert m2.listcol == [1]
+        assert m2.mapcol == {'a': 22}
 
 
 class NoDefaultTestCase(BaseTestCase):

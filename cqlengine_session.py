@@ -651,6 +651,9 @@ NON_NONE_BY_COLUMN = {
     columns.Date: date(2, 2, 2),
     columns.TimeUUID: UUID('d0a84a9e-52fa-11e3-ad4c-c8e0eb16059b'),
     columns.Boolean: False,
+    columns.Set: set(),
+    columns.List: [],
+    columns.Map: {}
 }
 
 def get_non_none_for_column(col):

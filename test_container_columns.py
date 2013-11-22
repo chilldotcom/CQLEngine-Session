@@ -10,10 +10,24 @@ from cqlengine.management import create_keyspace, delete_keyspace
 from cqlengine import columns
 from cqlengine.management import create_table, delete_table
 from cqlengine.tests.base import BaseCassEngTestCase
+from uuid import UUID
 
 
 class TestSetModel(SessionModel):
     partition = columns.UUID(primary_key=True, default=uuid.uuid4)
+    bytes = columns.Bytes(default=b'xyz')
+    ascii = columns.Ascii(default='default ascii')
+    text = columns.Text(default=u'default text')
+    integer = columns.Integer(default=42)
+    bigint = columns.BigInt(default=55)
+    varint = columns.VarInt(default=22)
+    uuid2 = columns.UUID(default=UUID('3ba7a823-52cd-11e3-8d17-c8e0eb16059b'))
+    float = columns.Float(default=3.1459)
+    decimal = columns.Decimal(default=12.345)
+    date = columns.Date(default=datetime.now)
+    datetime = columns.DateTime(default=datetime.now)
+    timeuuid = columns.TimeUUID(default=UUID('d16f1c47-52fa-11e3-9057-c8e0eb16059b'))
+    boolean = columns.Boolean(default=True)
     int_set = columns.Set(columns.Integer, required=False)
     text_set = columns.Set(columns.Text, required=False)
 
@@ -193,6 +207,19 @@ class TestSetColumn(BaseTestCase):
 
 class TestListModel(SessionModel):
     partition = columns.UUID(primary_key=True, default=uuid.uuid4)
+    bytes = columns.Bytes(default=b'xyz')
+    ascii = columns.Ascii(default='default ascii')
+    text = columns.Text(default=u'default text')
+    integer = columns.Integer(default=42)
+    bigint = columns.BigInt(default=55)
+    varint = columns.VarInt(default=22)
+    uuid2 = columns.UUID(default=UUID('3ba7a823-52cd-11e3-8d17-c8e0eb16059b'))
+    float = columns.Float(default=3.1459)
+    decimal = columns.Decimal(default=12.345)
+    date = columns.Date(default=datetime.now)
+    datetime = columns.DateTime(default=datetime.now)
+    timeuuid = columns.TimeUUID(default=UUID('d16f1c47-52fa-11e3-9057-c8e0eb16059b'))
+    boolean = columns.Boolean(default=True)
     int_list = columns.List(columns.Integer, required=False)
     text_list = columns.List(columns.Text, required=False)
 
@@ -319,6 +346,19 @@ class TestListColumn(BaseTestCase):
 
 class TestMapModel(SessionModel):
     partition = columns.UUID(primary_key=True, default=uuid.uuid4)
+    bytes = columns.Bytes(default=b'xyz')
+    ascii = columns.Ascii(default='default ascii')
+    text = columns.Text(default=u'default text')
+    integer = columns.Integer(default=42)
+    bigint = columns.BigInt(default=55)
+    varint = columns.VarInt(default=22)
+    uuid2 = columns.UUID(default=UUID('3ba7a823-52cd-11e3-8d17-c8e0eb16059b'))
+    float = columns.Float(default=3.1459)
+    decimal = columns.Decimal(default=12.345)
+    date = columns.Date(default=datetime.now)
+    datetime = columns.DateTime(default=datetime.now)
+    timeuuid = columns.TimeUUID(default=UUID('d16f1c47-52fa-11e3-9057-c8e0eb16059b'))
+    boolean = columns.Boolean(default=True)
     int_map = columns.Map(columns.Integer, columns.UUID, required=False)
     text_map = columns.Map(columns.Text, columns.DateTime, required=False)
 
