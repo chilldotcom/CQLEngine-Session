@@ -33,8 +33,9 @@ import threading
 from uuid import UUID
 
 from cqlengine import columns
+from cqlengine.connection import connection_manager
 from cqlengine.exceptions import ValidationError
-from cqlengine.management import sync_table
+from cqlengine.management import get_fields, sync_table
 from cqlengine.models import BaseModel, ColumnQueryEvaluator, ModelMetaClass
 from cqlengine.query import BatchQuery, ModelQuerySet
 
@@ -659,3 +660,116 @@ NON_NONE_BY_COLUMN = {
 def get_non_none_for_column(col):
     return NON_NONE_BY_COLUMN.get(type(col), u'__non_none_default__')
 
+
+class VerifyResult(object):
+
+    def __init__(self, model, is_missing=False):
+        self.model = model
+        self.is_missing = is_missing
+        self.is_extra = False
+        self.missing = set()
+        self.extra = set()
+        self.different = set()
+        self.missing_indexes = set()
+        self.extra_indexes = set()
+
+    def has_errors(self):
+        return self.is_missing or \
+                self.is_extra or \
+                self.missing or \
+                self.extra or \
+                self.different or \
+                self.missing_indexes or \
+                self.extra_indexes
+
+    def __repr__(self):
+        return 'VerifyResult({})'.format(self.model.__name__)
+
+
+def verify(*models):
+    results = {}
+    by_keyspace = {}
+    by_cf = {}
+    results = {}
+    for model in models:
+        ks_name = model._get_keyspace()
+        try:
+            by_keyspace[ks_name].add(model)
+        except KeyError:
+            by_keyspace[ks_name] = set([model])
+        cf_name = model.column_family_name(include_keyspace=False)
+        by_cf[cf_name] = model
+        results[model] = VerifyResult(model)
+
+    for keyspace, models in by_keyspace.items():
+        with connection_manager() as con:
+            tables = con.execute(
+                "SELECT columnfamily_name from system.schema_columnfamilies WHERE keyspace_name = :ks_name",
+                {'ks_name': ks_name}
+            )
+        tables = set([x[0] for x in tables.results])
+        for model in models:
+            cf_name = model.column_family_name(include_keyspace=False)
+            db_field_names = {col.db_field_name: col for name, col in model._columns.items()}
+            result = results[model]
+            if cf_name not in tables:
+                result.is_missing = True
+            else:
+                fields = get_fields(model)
+                field_names = set([x.name for x in fields])
+                for name in field_names:
+                    if name not in db_field_names:
+                        result.extra.add(name)
+                for name, col in db_field_names.items():
+                    # Primary keys are not listed here.
+                    if not col.primary_key and name not in field_names:
+                        result.missing.add(col.column_name)
+        for cf in tables:
+            if cf not in by_cf:
+                result = VerifyResult(cf)
+                result.is_extra = True
+                results[cf] = result
+        model_indexes = {}
+        for model in models:
+            this_model_indexes = {col.db_field_name: col for name, col in model._columns.items() if col.index}
+            if this_model_indexes:
+                model_indexes[model.column_family_name(include_keyspace=False)] = this_model_indexes
+        with connection_manager() as con:
+            _, idx_names = con.execute(
+                "SELECT index_name from system.\"IndexInfo\" WHERE table_name=:table_name",
+                {'table_name': model._get_keyspace()}
+            )
+        cassandra_indexes = {}
+        for (idx,) in idx_names:
+            try:
+                cf, index_name = idx.split('.')
+                db_field_name, i, index_name = index_name.split('_', 2)
+            except ValueError:
+                cf = None
+                index_name = None
+            if cf:
+                try:
+                    cassandra_indexes[cf].add(index_name)
+                except KeyError:
+                    cassandra_indexes[cf] = set([index_name])
+        for cf, index_names in cassandra_indexes.items():
+            if cf not in model_indexes:
+                model = by_cf[cf]
+                result = results[model]
+                result.extra_indexes.add(index_name)
+            else:
+                this_model_indexes = model_indexes[cf]
+                if index_name not in this_model_indexes:
+                    model = by_cf[cf]
+                    result = results[model]
+                    result.extra_indexes.add(index_name)
+        for cf, this_model_indexes in model_indexes.items():
+            for index_name in this_model_indexes.keys():
+                if cf not in cassandra_indexes or index_name not in cassandra_indexes[cf]:
+                    model = by_cf[cf]
+                    result = results[model]
+                    result.missing_indexes.add(index_name)
+
+    results = {model: result for model, result in results.items() if result.has_errors()}
+
+    return results.values()
