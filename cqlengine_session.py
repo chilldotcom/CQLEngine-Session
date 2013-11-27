@@ -770,7 +770,8 @@ def verify(*models):
         for (idx,) in idx_names:
             try:
                 cf, index_name = idx.split('.')
-                db_field_name, i, index_name = index_name.split('_', 2)
+                look_for = 'index_{}_'.format(cf)
+                index_name = index_name[len(look_for):]
             except ValueError:
                 cf = None
                 index_name = None

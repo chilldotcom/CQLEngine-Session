@@ -62,10 +62,10 @@ class VerifyTest(unittest.TestCase):
         delete_keyspace(self.keyspace)
 
     def test_has_extra_field(self):
-        Foo = make_model(table_name='Foo')
+        Foo = make_model(table_name='foo_bar')
         sync_table(Foo)
 
-        Foo2 = make_model(table_name='Foo', skip=set(['title']))
+        Foo2 = make_model(table_name='foo_bar', skip=set(['title']))
         results = verify(Foo2)
         [result.report() for result in results]
         assert len(results) == 1
@@ -79,10 +79,10 @@ class VerifyTest(unittest.TestCase):
         assert 'title' in result.extra
 
     def test_has_missing_field(self):
-        Foo = make_model(table_name='Foo', skip=set(['title']))
+        Foo = make_model(table_name='foo_bar', skip=set(['title']))
         sync_table(Foo)
 
-        Foo2 = make_model(table_name='Foo')
+        Foo2 = make_model(table_name='foo_bar')
         results = verify(Foo2)
         [result.report() for result in results]
         assert len(results) == 1
@@ -96,11 +96,21 @@ class VerifyTest(unittest.TestCase):
         assert len(result.missing) == 1
         assert 'title' in result.missing
 
-    def test_has_extra_index(self):
-        Foo = make_model(table_name='Foo')
+
+    def test_has_ok_index(self):
+        Foo = make_model(table_name='foo_bar')
         sync_table(Foo)
 
-        Foo2 = make_model(table_name='Foo', index={})
+        results = verify(Foo)
+        print [result.report() for result in results]
+        assert len(results) == 0
+
+
+    def test_has_extra_index(self):
+        Foo = make_model(table_name='foo_bar')
+        sync_table(Foo)
+
+        Foo2 = make_model(table_name='foo_bar', index={})
         results = verify(Foo2)
         [result.report() for result in results]
         assert len(results) == 1
@@ -114,10 +124,10 @@ class VerifyTest(unittest.TestCase):
         assert 'text_index' in result.extra_indexes
 
     def test_has_missing_index(self):
-        Foo = make_model(table_name='Foo', index={})
+        Foo = make_model(table_name='foo_bar', index={})
         sync_table(Foo)
 
-        Foo2 = make_model(table_name='Foo')
+        Foo2 = make_model(table_name='foo_bar')
         results = verify(Foo2)
         [result.report() for result in results]
         assert len(results) == 1
@@ -132,10 +142,10 @@ class VerifyTest(unittest.TestCase):
         assert 'text_index' in result.missing_indexes
 
     #def test_has_different(self):
-    #    Foo = make_model(table_name='Foo')
+    #    Foo = make_model(table_name='foo_bar')
     #    sync_table(Foo)
     #
-    #    Foo2 = make_model(table_name='Foo', different={'title': columns.Ascii()})
+    #    Foo2 = make_model(table_name='foo_bar', different={'title': columns.Ascii()})
     #    results = verify(Foo2)
     #    assert len(results) == 1
     #    result = results[0]
@@ -146,7 +156,7 @@ class VerifyTest(unittest.TestCase):
     #    assert 'title' in result.different
 
     def test_has_two(self):
-        Foo = make_model(table_name='Foo')
+        Foo = make_model(table_name='foo_bar')
         Bar = make_model(table_name='Bar')
         sync_table(Foo)
         sync_table(Bar)
@@ -155,7 +165,7 @@ class VerifyTest(unittest.TestCase):
         assert not results
 
     def has_extra_cf(self):
-        Foo = make_model(table_name='Foo')
+        Foo = make_model(table_name='foo_bar')
         Bar = make_model(table_name='Bar')
         sync_table(Foo)
         sync_table(Bar)
@@ -168,7 +178,7 @@ class VerifyTest(unittest.TestCase):
         assert result.is_extra
 
     def has_missing_cf(self):
-        Foo = make_model(table_name='Foo')
+        Foo = make_model(table_name='foo_bar')
         Bar = make_model(table_name='Bar')
         sync_table(Foo)
         #sync_table(Bar)
