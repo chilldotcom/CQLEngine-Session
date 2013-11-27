@@ -67,6 +67,7 @@ class VerifyTest(unittest.TestCase):
 
         Foo2 = make_model(table_name='Foo', skip=set(['title']))
         results = verify(Foo2)
+        [result.report() for result in results]
         assert len(results) == 1
         result = results[0]
 
@@ -83,6 +84,7 @@ class VerifyTest(unittest.TestCase):
 
         Foo2 = make_model(table_name='Foo')
         results = verify(Foo2)
+        [result.report() for result in results]
         assert len(results) == 1
         result = results[0]
 
@@ -100,6 +102,7 @@ class VerifyTest(unittest.TestCase):
 
         Foo2 = make_model(table_name='Foo', index={})
         results = verify(Foo2)
+        [result.report() for result in results]
         assert len(results) == 1
         result = results[0]
 
@@ -116,6 +119,7 @@ class VerifyTest(unittest.TestCase):
 
         Foo2 = make_model(table_name='Foo')
         results = verify(Foo2)
+        [result.report() for result in results]
         assert len(results) == 1
         result = results[0]
 
@@ -157,6 +161,7 @@ class VerifyTest(unittest.TestCase):
         sync_table(Bar)
 
         results = verify(Foo)
+        [result.report() for result in results]
         assert len(results) == 1
         result = results[0]
         assert result.model == u'Bar'
@@ -169,6 +174,7 @@ class VerifyTest(unittest.TestCase):
         #sync_table(Bar)
 
         results = verify(Foo, Bar)
+        [result.report() for result in results]
         assert len(results) == 2
         if results[0].model == Foo:
             foo_result = results[0]

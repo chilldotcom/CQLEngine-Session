@@ -682,6 +682,33 @@ class VerifyResult(object):
                 self.missing_indexes or \
                 self.extra_indexes
 
+    def report(self):
+        name = self.model.__name__
+        if self.is_missing:
+            return '{} does not have a column family (expected "{}")'.format(
+                    name,
+                    self.model.column_family_name(include_keyspace=False))
+        if self.is_extra:
+            return 'found unexpected column family "{}"'.format(name)
+        logs = []
+        if self.missing:
+            logs.append('{} columns missing: {}'.format(
+                name, ', '.join(self.missing)))
+        if self.extra:
+            logs.append('{} extra columns: {}'.format(
+                name, ', '.join(self.extra)
+            ))
+        if self.missing_indexes:
+            logs.append('{} indexes missing: {}'.format(
+                name, ', '.join(self.missing_indexes)
+            ))
+        if self.extra_indexes:
+            logs.append('{} extra indexes: {}'.format(
+                name, ', '.join(self.extra_indexes)
+            ))
+        return '\n'.join(logs)
+
+
     def __repr__(self):
         return 'VerifyResult({})'.format(self.model.__name__)
 
