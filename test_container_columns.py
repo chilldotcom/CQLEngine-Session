@@ -452,7 +452,6 @@ class TestMapColumn(BaseTestCase):
         m.int_map = expected
         save()
 
-
         m2 = TestMapModel.get(partition=m.partition)
         assert m2.int_map == expected
 

@@ -123,6 +123,7 @@ class Session(object):
                 key_names = create.id_mapped_class._columns.keys()
                 arg = {name: getattr(create, name) for name in key_names}
                 create.id_mapped_class.batch(batch).create(**arg)
+                del create._created
             for update in updates:
                 key_names = update._primary_keys.keys()
                 arg = {name: getattr(update, name) for name in key_names}
