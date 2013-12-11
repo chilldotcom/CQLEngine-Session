@@ -419,6 +419,67 @@ class BasicTestCase(BaseTestCase):
         todo = self.Todo.objects(uuid=todo_key).get()
         assert todo.title == None
 
+    def test_multiple_saves(self):
+        todo = self.Todo.create(title='first', text='text1')
+        todo_key = todo.uuid
+        self.assertTrue(isinstance(todo_key, uuid.UUID))
+        self.assertEqual(todo.title, 'first')
+        self.assertEqual(todo.text, 'text1')
+        self.assertEqual(todo.done, None)
+        self.assertEqual(todo.pub_date, None)
+
+        # Do a non-session execute to confirm it's not there.
+        # (not sure if this is defined behavior, as it should look up the
+        # object in the session to begin with?  I think in this case it is
+        # getting the object back from storage and then linking it with the
+        # object in the identity map, so, fixing this is TODO, as this
+        # way of checking was from the old way of handling the objects.)
+        raised = None
+        try:
+            self.Todo.id_mapped_class.objects(uuid=todo_key).get()
+        except Exception, e:
+            raised = e
+            self.assertTrue(isinstance(e, DoesNotExist))
+        else:
+            self.assertTrue(False)
+
+        # save the session, and thus the object.
+        save()
+
+        # confirm in cassandra (outside of cqe-session)
+        check = self.Todo.id_mapped_class.objects(uuid=todo_key).get()
+        self.assertIsNotNone(check)
+
+        # delete outside of cqe-session.
+        check.delete()
+
+        # re-check, make sure it's gone
+        raised = None
+        try:
+            self.Todo.id_mapped_class.objects(uuid=todo_key).get()
+        except Exception, e:
+            raised = e
+            self.assertTrue(isinstance(e, DoesNotExist))
+        else:
+            self.assertTrue(False)
+
+        # make another object and save that.  (note session has not been
+        # cleared.)
+        todo2 = self.Todo.create(title='second', text='text2')
+        todo2_key = todo.uuid
+        save()
+
+        # re-check, make sure todo 1 is gone.
+        raised = None
+        try:
+            self.Todo.id_mapped_class.objects(uuid=todo_key).get()
+        except Exception, e:
+            raised = e
+            self.assertTrue(isinstance(e, DoesNotExist))
+        else:
+            self.assertTrue(False)
+
+
 class TestDefaultCase(BaseTestCase):
 
     model_classes = {'Todo': make_default_todo_model}
