@@ -323,7 +323,7 @@ class IdMapModel(object):
 
         Invalid column names in kwargs raises an exception
         """
-        extra_columns = set(kwargs.keys()) - set(cls.id_mapped_class._columns.keys())
+        extra_columns = set(kwargs.keys()) - set(self.id_mapped_class._columns.keys())
         if extra_columns:
             raise ValidationError("Incorrect columns passed: {}".format(extra_columns))
 
