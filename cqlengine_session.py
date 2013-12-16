@@ -318,6 +318,18 @@ class IdMapModel(object):
             instance._promote(name, value)
         return instance
 
+    def promote(self, **kwargs):
+        """Set kwargs on entity without marking as dirty
+
+        Invalid column names in kwargs raises an exception
+        """
+        extra_columns = set(kwargs.keys()) - set(cls.id_mapped_class._columns.keys())
+        if extra_columns:
+            raise ValidationError("Incorrect columns passed: {}".format(extra_columns))
+
+        for col_name, col_value in kwargs.items():
+            self._promote(col_name, col_value)
+
     def _promote(self, name, value):
         """set without marking attribute as dirty."""
         try:
