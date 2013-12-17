@@ -80,11 +80,11 @@ def clear():
     SESSION_MANAGER.set_session(None)
 
 
-def save():
+def save(*objects):
     "Write all pending changes from session to Cassandra."
     session = SESSION_MANAGER.get_session()
     if session is not None:
-        session.save()
+        session.save(*objects)
 
 
 def get_session(create_if_missing=True):
@@ -107,7 +107,12 @@ class Session(object):
         self.call_after_save = []
         #self.deletes = set()
 
-    def save(self):
+    def save(self, *objects):
+        """Flush all pending changes to Cassandra.
+
+        objects -- if not None, only operate on this or these object(s)
+
+        """
         updates = set()
         counter_updates = set()
         creates = set()
@@ -124,6 +129,12 @@ class Session(object):
                         counter_updates.add(instance)
                     else:
                         updates.add(instance)
+        if objects:
+            updates = updates and objects
+            counter_updates = counter_updates and objects
+            creates = creates and objects
+            counter_creates = counter_creates and objects
+
         with BatchQuery() as batch:
             for create in creates:
                 key_names = create.id_mapped_class._columns.keys()

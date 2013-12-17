@@ -483,7 +483,6 @@ class BasicTestCase(BaseTestCase):
         else:
             self.assertTrue(False)
 
-
     def test_call_after_save(self):
         todo = self.Todo.create(title='first', text='text1')
         todo_key = todo.uuid
@@ -547,6 +546,57 @@ class BasicTestCase(BaseTestCase):
         save()
 
         assert len(was_called) == 0
+
+    def test_single_insert(self):
+        # create an object
+
+        todo1 = self.Todo.create(title='first', text='text1')
+        todo1_key = todo1.uuid
+        todo2 = self.Todo.create(title='second', text='text2')
+        todo2_key = todo2.uuid
+
+        # This will save todo1 only.
+        save(todo1)
+
+        raised = None
+        try:
+            self.Todo.id_mapped_class.objects(uuid=todo2_key).get()
+        except Exception, e:
+            raised = e
+            self.assertTrue(isinstance(e, DoesNotExist))
+        else:
+            self.assertTrue(False)
+
+        assert self.Todo.id_mapped_class.objects(uuid=todo1_key).get()
+
+        save()
+
+        assert self.Todo.id_mapped_class.objects(uuid=todo2_key).get()
+
+    def test_single_update(self):
+        todo1 = self.Todo.create(title='first', text='text1')
+        todo1_key = todo1.uuid
+        todo2 = self.Todo.create(title='second', text='text2')
+        todo2_key = todo2.uuid
+
+        save()
+        clear()
+
+        todo1 = self.Todo.objects(uuid=todo1_key).get()
+        todo2 = self.Todo.objects(uuid=todo2_key).get()
+
+        todo1.text = 'changed1'
+        todo2.text = 'changed2'
+
+        save(todo2)
+
+        assert self.Todo.id_mapped_class.objects(uuid=todo1_key).get().text == 'text1'
+        assert self.Todo.id_mapped_class.objects(uuid=todo2_key).get().text == 'changed2'
+
+        save()
+
+        assert self.Todo.id_mapped_class.objects(uuid=todo1_key).get().text == 'changed1'
+        assert self.Todo.id_mapped_class.objects(uuid=todo2_key).get().text == 'changed2'
 
 
 class TestDefaultCase(BaseTestCase):
