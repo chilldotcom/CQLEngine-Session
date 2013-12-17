@@ -7,7 +7,11 @@ from cqlengine import columns
 from cqlengine.connection import setup
 from cqlengine.management import create_keyspace, delete_keyspace
 from cqlengine.query import DoesNotExist
-from cqlengine_session import AttributeUnavailable, clear, save, SessionModel
+from cqlengine_session import (add_call_after_save, \
+                               AttributeUnavailable, \
+                               clear, \
+                               save, \
+                               SessionModel)
 
 def groom_time(dtime):
     return datetime(*dtime.timetuple()[:6])
@@ -478,6 +482,71 @@ class BasicTestCase(BaseTestCase):
             self.assertTrue(isinstance(e, DoesNotExist))
         else:
             self.assertTrue(False)
+
+
+    def test_call_after_save(self):
+        todo = self.Todo.create(title='first', text='text1')
+        todo_key = todo.uuid
+
+        was_called = []
+        def this_was_called(*args, **kwargs):
+            was_called.append((args, kwargs))
+
+        def that_was_called(*args, **kwargs):
+            was_called.append((args, kwargs))
+
+        add_call_after_save(this_was_called, 'foo', 'bar', baz='abc', qux=123)
+        add_call_after_save(that_was_called, 54321, 3.14)
+        add_call_after_save(this_was_called, nub='nab')
+
+        assert len(was_called) == 0
+
+        save()
+
+        assert len(was_called) == 3
+        assert was_called[0] == (('foo', 'bar'), {'baz': 'abc', 'qux': 123})
+        assert was_called[1] == ((54321, 3.14), {})
+        assert was_called[2] == (tuple(), {'nub': 'nab'})
+
+        was_called = []
+
+        todo.text = 'text2'
+
+        save()
+
+        assert len(was_called) == 0
+
+        add_call_after_save(that_was_called, 54321, 3.14)
+        add_call_after_save(this_was_called, nub='nab3')
+        add_call_after_save(this_was_called, 'foo3', 'bar3', baz='abc3', qux=123)
+
+        todo.text = 'text3'
+
+        save()
+
+        assert len(was_called) == 3
+        assert was_called[0] == ((54321, 3.14), {})
+        assert was_called[1] == (tuple(), {'nub': 'nab3'})
+        assert was_called[2] == (('foo3', 'bar3'), {'baz': 'abc3', 'qux': 123})
+
+        was_called = []
+
+        add_call_after_save(that_was_called, 54321, 3.14)
+        add_call_after_save(this_was_called, 'foo4', 'bar4', baz='abc4', qux=123)
+        add_call_after_save(this_was_called, nub='nab4')
+
+        save()
+
+        assert len(was_called) == 3
+        assert was_called[0] == ((54321, 3.14), {})
+        assert was_called[1] == (('foo4', 'bar4'), {'baz': 'abc4', 'qux': 123})
+        assert was_called[2] == (tuple(), {'nub': 'nab4'})
+
+        was_called = []
+
+        save()
+
+        assert len(was_called) == 0
 
 
 class TestDefaultCase(BaseTestCase):

@@ -95,10 +95,16 @@ def get_session(create_if_missing=True):
     return session
 
 
+def add_call_after_save(callable, *args, **kwargs):
+    """Call callable with given args and kwargs after next save."""
+    get_session().call_after_save.append((callable, args, kwargs,))
+
+
 class Session(object):
     """Identity map objects and support for implicit batch save."""
     def __init__(self):
         self.instances_by_class = {}
+        self.call_after_save = []
         #self.deletes = set()
 
     def save(self):
@@ -167,6 +173,10 @@ class Session(object):
             cqlengine_instance.update()
 #            for delete in self.deletes:
 #                raise NotImplementedError
+        for callable, args, kwargs in self.call_after_save:
+            callable(*args, **kwargs)
+        self.call_after_save = []
+
 
 class SessionModelMetaClass(ModelMetaClass):
 
