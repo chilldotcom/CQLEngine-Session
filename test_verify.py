@@ -96,6 +96,41 @@ class VerifyTest(unittest.TestCase):
         assert len(result.missing) == 1
         assert 'title' in result.missing
 
+    #def test_has_extra_primary_key_field(self):
+    #    Foo = make_model(table_name='foo_bar')
+    #    sync_table(Foo)
+    #
+    #    Foo2 = make_model(table_name='foo_bar', skip=set(['uuid']))
+    #    results = verify(Foo2)
+    #    [result.report() for result in results]
+    #    assert len(results) == 1
+    #    result = results[0]
+    #
+    #    assert not result.missing
+    #    assert not result.different
+    #    assert not result.missing_indexes
+    #    assert not result.extra_indexes
+    #    assert len(result.extra) == 1
+    #    assert 'title' in result.extra
+    #
+    #def test_has_missing_primary_key_field(self):
+    #    Foo = make_model(table_name='foo_bar', skip=set(['uuid']))
+    #    sync_table(Foo)
+    #
+    #    Foo2 = make_model(table_name='foo_bar')
+    #    results = verify(Foo2)
+    #    [result.report() for result in results]
+    #    assert len(results) == 1
+    #    result = results[0]
+    #
+    #    assert not result.is_missing
+    #    assert not result.extra
+    #    assert not result.different
+    #    assert not result.missing_indexes
+    #    assert not result.extra_indexes
+    #    assert len(result.missing) == 1
+    #    assert 'title' in result.missing
+
 
     def test_has_ok_index(self):
         Foo = make_model(table_name='foo_bar')
@@ -141,19 +176,19 @@ class VerifyTest(unittest.TestCase):
         assert len(result.missing_indexes) == 1
         assert 'text_index' in result.missing_indexes
 
-    #def test_has_different(self):
-    #    Foo = make_model(table_name='foo_bar')
-    #    sync_table(Foo)
-    #
-    #    Foo2 = make_model(table_name='foo_bar', different={'title': columns.Ascii()})
-    #    results = verify(Foo2)
-    #    assert len(results) == 1
-    #    result = results[0]
-    #
-    #    assert not result.extra
-    #    assert not result.missing
-    #    assert len(result.different) == 1
-    #    assert 'title' in result.different
+    def test_has_different(self):
+        Foo = make_model(table_name='foo_bar')
+        sync_table(Foo)
+
+        Foo2 = make_model(table_name='foo_bar', different={'title': columns.Ascii()})
+        results = verify(Foo2)
+        assert len(results) == 1
+        result = results[0]
+
+        assert not result.extra
+        assert not result.missing
+        assert len(result.different) == 1
+        assert 'title' in result.different
 
     def test_has_two(self):
         Foo = make_model(table_name='foo_bar')

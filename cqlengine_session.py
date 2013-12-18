@@ -773,17 +773,36 @@ def verify(*models):
             cf_name = model.column_family_name(include_keyspace=False)
             db_field_names = {col.db_field_name: col for name, col in model._columns.items()}
             result = results[model]
+            # Check that model's cf is in db's tables.
             if cf_name not in tables:
                 result.is_missing = True
             else:
                 fields = get_fields(model)
-                field_names = set([x.name for x in fields])
-                for name in field_names:
+                fields = {field.name: field.type for field in fields}
+                for name, field_type in fields.iteritems():
+                    # If field is missing, that's an error.
                     if name not in db_field_names:
                         result.extra.add(name)
+                    # If field is present, check the type.
+                    else:
+                        # (skip containers for the moment)
+                        col = db_field_names[name]
+                        if isinstance(col, columns.Map):
+                            if not field_type.startswith('org.apache.cassandra.db.marshal.MapType'):
+                                result.different.add(col.column_name)
+                        elif isinstance(col, columns.List):
+                            if not field_type.startswith('org.apache.cassandra.db.marshal.ListType'):
+                                result.different.add(col.column_name)
+                        elif isinstance(col, columns.Set):
+                            if not field_type.startswith('org.apache.cassandra.db.marshal.SetType'):
+                                result.different.add(col.column_name)
+                        else:
+                            local_metadata = _type_to_metadata(col.db_type)
+                            if local_metadata != field_type:
+                                result.different.add(col.column_name)
                 for name, col in db_field_names.items():
                     # Primary keys are not listed here.
-                    if not col.primary_key and name not in field_names:
+                    if not col.primary_key and name not in fields:
                         result.missing.add(col.column_name)
         for cf in tables:
             if cf not in by_cf:
@@ -835,3 +854,39 @@ def verify(*models):
     results = {model: result for model, result in results.items() if result.has_errors()}
 
     return results.values()
+
+
+# Some functions to aid reading the cassandra definitions.
+def _metadata_to_type(s):
+    return {
+        'org.apache.cassandra.db.marshal.UUIDType': UUID,
+        'org.apache.cassandra.db.marshal.DoubleType': float,
+        'org.apache.cassandra.db.marshal.UTF8Type': unicode,
+        'org.apache.cassandra.db.marshal.BooleanType': bool,
+        'org.apache.cassandra.db.marshal.Int32Type': int,
+        'org.apache.cassandra.db.marshal.LongType': long,
+        'org.apache.cassandra.db.marshal.DateType': date
+    }.get(s, s)
+
+def _type_to_metadata(s):
+    return {
+        'int': 'org.apache.cassandra.db.marshal.Int32Type',
+        'text': 'org.apache.cassandra.db.marshal.UTF8Type',
+        'uuid': 'org.apache.cassandra.db.marshal.UUIDType',
+        UUID: 'org.apache.cassandra.db.marshal.UUIDType',
+        float: 'org.apache.cassandra.db.marshal.DoubleType',
+        'double': 'org.apache.cassandra.db.marshal.DoubleType',
+        unicode: 'org.apache.cassandra.db.marshal.UTF8Type',
+        'boolean': 'org.apache.cassandra.db.marshal.BooleanType',
+        bool: 'org.apache.cassandra.db.marshal.BooleanType',
+        int: 'org.apache.cassandra.db.marshal.Int32Type',
+        long: 'org.apache.cassandra.db.marshal.LongType',
+        'bigint': 'org.apache.cassandra.db.marshal.LongType',
+        date: 'org.apache.cassandra.db.marshal.DateType',
+        'decimal': 'org.apache.cassandra.db.marshal.DecimalType',
+        'timestamp': 'org.apache.cassandra.db.marshal.DateType',
+        'varint': 'org.apache.cassandra.db.marshal.IntegerType',
+        'timeuuid': 'org.apache.cassandra.db.marshal.TimeUUIDType',
+        'ascii': 'org.apache.cassandra.db.marshal.AsciiType',
+        'blob': 'org.apache.cassandra.db.marshal.BytesType'
+    }.get(s, s)
