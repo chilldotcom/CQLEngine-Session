@@ -11,20 +11,22 @@ from cqlengine.query import DoesNotExist
 from cqlengine_session import verify
 
 def make_model(table_name, skip={}, different={}, index={'text_index': True}):
-    def get_col(name, col):
+    def get_col(name, col, args=(), kwargs={}):
         if name in skip:
             return None
         if name in different:
             return different[name]
         if name in index:
-            return col(index=True)
+            return col(*args, index=True, **kwargs)
         else:
-            return col()
+            return col(*args, **kwargs)
 
     class TestTable(Model):
         __table_name__ = table_name
         partition = columns.Text(primary_key=True)
-        uuid = columns.UUID(primary_key=True, default=uuid.uuid4)
+        uuida = columns.UUID(primary_key=True, default=uuid.uuid4)
+        uuidb = get_col('uuidb', columns.UUID, kwargs={'primary_key':True, 'default':uuid.uuid4})
+        uuidc = columns.UUID(primary_key=True, default=uuid.uuid4)
         title = get_col('title', columns.Text)
         text_index = get_col('text_index', columns.Text)
         done = columns.Boolean()
@@ -96,40 +98,54 @@ class VerifyTest(unittest.TestCase):
         assert len(result.missing) == 1
         assert 'title' in result.missing
 
-    #def test_has_extra_primary_key_field(self):
-    #    Foo = make_model(table_name='foo_bar')
-    #    sync_table(Foo)
-    #
-    #    Foo2 = make_model(table_name='foo_bar', skip=set(['uuid']))
-    #    results = verify(Foo2)
-    #    [result.report() for result in results]
-    #    assert len(results) == 1
-    #    result = results[0]
-    #
-    #    assert not result.missing
-    #    assert not result.different
-    #    assert not result.missing_indexes
-    #    assert not result.extra_indexes
-    #    assert len(result.extra) == 1
-    #    assert 'title' in result.extra
-    #
-    #def test_has_missing_primary_key_field(self):
-    #    Foo = make_model(table_name='foo_bar', skip=set(['uuid']))
-    #    sync_table(Foo)
-    #
-    #    Foo2 = make_model(table_name='foo_bar')
-    #    results = verify(Foo2)
-    #    [result.report() for result in results]
-    #    assert len(results) == 1
-    #    result = results[0]
-    #
-    #    assert not result.is_missing
-    #    assert not result.extra
-    #    assert not result.different
-    #    assert not result.missing_indexes
-    #    assert not result.extra_indexes
-    #    assert len(result.missing) == 1
-    #    assert 'title' in result.missing
+    def test_has_extra_primary_key_field(self):
+        Foo = make_model(table_name='foo_bar')
+        sync_table(Foo)
+
+        Foo2 = make_model(table_name='foo_bar', skip=set(['uuidb']))
+        results = verify(Foo2)
+        [result.report() for result in results]
+        assert len(results) == 1
+        result = results[0]
+
+        assert not result.missing
+        assert not result.different
+        assert not result.missing_indexes
+        assert not result.extra_indexes
+        assert len(result.extra) == 1
+        assert 'uuidb' in result.extra
+
+    def test_has_missing_primary_key_field(self):
+        Foo = make_model(table_name='foo_bar', skip=set(['uuidb']))
+        sync_table(Foo)
+
+        Foo2 = make_model(table_name='foo_bar')
+        results = verify(Foo2)
+        [result.report() for result in results]
+        assert len(results) == 1
+        result = results[0]
+
+        assert not result.is_missing
+        assert not result.extra
+        assert not result.different
+        assert not result.missing_indexes
+        assert not result.extra_indexes
+        assert len(result.missing) == 1
+        assert 'uuidb' in result.missing
+
+    def test_has_different_primary_key(self):
+        Foo = make_model(table_name='foo_bar')
+        sync_table(Foo)
+
+        Foo2 = make_model(table_name='foo_bar', different={'uuidb': columns.Ascii(primary_key=True, default=uuid.uuid4)})
+        results = verify(Foo2)
+        assert len(results) == 1
+        result = results[0]
+
+        assert not result.extra
+        assert not result.missing
+        assert len(result.different) == 1
+        assert 'uuidb' in result.different
 
 
     def test_has_ok_index(self):

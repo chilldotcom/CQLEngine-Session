@@ -29,6 +29,7 @@ foo = Foo.create()
 import copy
 from datetime import date, datetime
 import importlib
+import json
 import threading
 from uuid import UUID
 
@@ -764,11 +765,24 @@ def verify(*models):
 
     for keyspace, models in by_keyspace.items():
         with connection_manager() as con:
-            tables = con.execute(
-                "SELECT columnfamily_name from system.schema_columnfamilies WHERE keyspace_name = :ks_name",
+            query_result = con.execute(
+#                "SELECT columnfamily_name from system.schema_columnfamilies WHERE keyspace_name = :ks_name",
+                "SELECT columnfamily_name, key_aliases, key_validator, column_aliases, comparator from system.schema_columnfamilies WHERE keyspace_name = :ks_name",
                 {'ks_name': ks_name}
             )
-        tables = set([x[0] for x in tables.results])
+        tables = {}
+        for columnfamily_name, key_aliases, key_validator, column_aliases, comparator in query_result.results:
+            column_aliases = json.loads(column_aliases)
+            key_aliases = json.loads(key_aliases)[0]
+            column_types = comparator[len('org.apache.cassandra.db.marshal.CompositeType('):].split(',')[:len(column_aliases)]
+            item = {
+                'cf': columnfamily_name,
+                'primary_key': key_aliases,
+                'primary_key_type': key_validator,
+                'column_aliases': column_aliases,
+                'column_types': column_types
+            }
+            tables[columnfamily_name] = item
         for model in models:
             cf_name = model.column_family_name(include_keyspace=False)
             db_field_names = {col.db_field_name: col for name, col in model._columns.items()}
@@ -777,6 +791,7 @@ def verify(*models):
             if cf_name not in tables:
                 result.is_missing = True
             else:
+                table_info = tables[cf_name]
                 fields = get_fields(model)
                 fields = {field.name: field.type for field in fields}
                 for name, field_type in fields.iteritems():
@@ -800,8 +815,38 @@ def verify(*models):
                             local_metadata = _type_to_metadata(col.db_type)
                             if local_metadata != field_type:
                                 result.different.add(col.column_name)
+                name = table_info['primary_key']
+                if name not in db_field_names:
+                    result.extra.add(name)
+                else:
+                    col = db_field_names[name]
+                    local_metadata = _type_to_metadata(col.db_type)
+                    if local_metadata != table_info['primary_key_type']:
+                        result.different.add(col.column_name)
+                for name, kind in zip(table_info['column_aliases'], table_info['column_types']):
+                    if name not in db_field_names:
+                        result.extra.add(name)
+                    else:
+                        col = db_field_names[name]
+                        local_metadata = _type_to_metadata(col.db_type)
+                        if local_metadata != kind:
+                            result.different.add(col.column_name)
+
                 for name, col in db_field_names.items():
-                    # Primary keys are not listed here.
+                    # Handle primary keys from table-level data.
+                    if col.primary_key:
+                        if name != table_info['primary_key'] and name not in table_info['column_aliases']:
+                            result.missing.add(col.column_name)
+                        else:
+                            local_metadata = _type_to_metadata(col.db_type)
+                            if name == table_info['primary_key']:
+                                if local_metadata != table_info['primary_key_type']:
+                                    result.different.add(col.column_name)
+                            else:
+                                i = table_info['column_aliases'].index(name)
+                                if local_metadata != table_info['column_types'][i]:
+                                    result.different.add(col.column_name)
+                    # Primary keys are not listed in fields.
                     if not col.primary_key and name not in fields:
                         result.missing.add(col.column_name)
         for cf in tables:
@@ -890,3 +935,4 @@ def _type_to_metadata(s):
         'ascii': 'org.apache.cassandra.db.marshal.AsciiType',
         'blob': 'org.apache.cassandra.db.marshal.BytesType'
     }.get(s, s)
+
