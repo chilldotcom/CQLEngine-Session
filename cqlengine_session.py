@@ -733,6 +733,9 @@ class VerifyResult(object):
             logs.append('{} extra columns: {}'.format(
                 name, ', '.join(self.extra)
             ))
+        if self.different:
+            logs.append('{} columns different: {}'.format(
+                name, ', '.join(self.different)))
         if self.missing_indexes:
             logs.append('{} indexes missing: {}'.format(
                 name, ', '.join(self.missing_indexes)
