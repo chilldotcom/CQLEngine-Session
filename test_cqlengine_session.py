@@ -5,11 +5,13 @@ from uuid import UUID
 
 from cqlengine import columns
 from cqlengine.connection import setup
+from cqlengine.exceptions import ValidationError
 from cqlengine.management import create_keyspace, delete_keyspace
 from cqlengine.query import DoesNotExist
 from cqlengine_session import (add_call_after_save, \
                                AttributeUnavailable, \
                                clear, \
+                               NON_NONE_BY_COLUMN, \
                                save, \
                                SessionModel)
 
@@ -162,6 +164,42 @@ def make_required_todo_model():
         mapcol = columns.Map(columns.Text, columns.Integer, required=True)
 
     return Todo
+
+def make_instance_range_model():
+
+    class InstanceRangeColumn(columns.Integer):
+        """Column with a range of legal values defined per-instance."""
+
+        def __init__(self, *args, **kwargs):
+            """
+            :param enum_set: EnumSet instance (required)
+            """
+            self.range = kwargs['range']
+            del kwargs['range']
+            super(InstanceRangeColumn, self).__init__(*args, **kwargs)
+
+        def validate(self, value):
+            if value is None:
+                return
+            if value not in self.range:
+                raise ValidationError("{} not in range for {}".format(value, self.column_name))
+            return value
+
+        def to_python(self, value):
+            return self.validate(value)
+
+        def to_database(self, value):
+            return self.validate(value)
+
+    NON_NONE_BY_COLUMN[InstanceRangeColumn] = 0
+
+    class Todo(SessionModel):
+        uuid = columns.UUID(primary_key=True, default=uuid.uuid4)
+        col123 = InstanceRangeColumn(range={1, 2, 3}, default=1)
+        col456 = InstanceRangeColumn(range={4, 5, 6}, default=4)
+
+    return Todo
+
 
 
 class BaseTestCase(unittest.TestCase):
@@ -875,6 +913,34 @@ class SubClassTestCase(BaseTestCase):
         assert todo.title == 'testtitle'
         todo.title = 'testtitle2'
         save()
+
+
+class InstanceValidationTestCase(BaseTestCase):
+
+    model_classes = {'Todo': make_instance_range_model}
+
+    def test_insert(self):
+        todo = self.Todo.create()
+        todo_key = todo.uuid
+        self.assertTrue(isinstance(todo_key, uuid.UUID))
+        self.assertEqual(todo.col123, None)
+        self.assertEqual(todo.col456, None)
+
+        save()
+
+        todo.col123 = 2
+
+        save()
+
+        todo.col456 = 5
+
+        save()
+        clear()
+
+        todo = self.Todo.get(uuid=todo_key)
+        assert todo.col123 == 2
+        assert todo.col456 == 5
+
 
 
 
