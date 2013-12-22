@@ -11,7 +11,6 @@ from cqlengine.query import DoesNotExist
 from cqlengine_session import (add_call_after_save, \
                                AttributeUnavailable, \
                                clear, \
-                               NON_NONE_BY_COLUMN, \
                                save, \
                                SessionModel)
 
@@ -191,12 +190,10 @@ def make_instance_range_model():
         def to_database(self, value):
             return self.validate(value)
 
-    NON_NONE_BY_COLUMN[InstanceRangeColumn] = 0
-
     class Todo(SessionModel):
         uuid = columns.UUID(primary_key=True, default=uuid.uuid4)
         col123 = InstanceRangeColumn(range={1, 2, 3}, default=1)
-        col456 = InstanceRangeColumn(range={4, 5, 6}, default=4)
+        col456 = InstanceRangeColumn(range={4, 5, 6}, required=True)
 
     return Todo
 
@@ -920,19 +917,15 @@ class InstanceValidationTestCase(BaseTestCase):
     model_classes = {'Todo': make_instance_range_model}
 
     def test_insert(self):
-        todo = self.Todo.create()
+        todo = self.Todo.create(col456=5)
         todo_key = todo.uuid
         self.assertTrue(isinstance(todo_key, uuid.UUID))
-        self.assertEqual(todo.col123, None)
-        self.assertEqual(todo.col456, None)
+        self.assertEqual(todo.col123, 1)
+        self.assertEqual(todo.col456, 5)
 
         save()
 
         todo.col123 = 2
-
-        save()
-
-        todo.col456 = 5
 
         save()
         clear()

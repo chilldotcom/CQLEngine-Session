@@ -145,25 +145,9 @@ class Session(object):
             for update in updates:
                 key_names = update._primary_keys.keys()
                 arg = {name: getattr(update, name) for name in key_names}
-                cqlengine_instance = update.id_mapped_class(**arg)
                 dirties = update._dirties
-                for name, value in dirties.items():
-                    setattr(cqlengine_instance, name, value)
-                # For a blind update to run without complaint or error,
-                # default-having and required fields that we are not setting
-                # need to appear to have an unchanged value.
-                for name, col in update._columns.items():
-                    if name not in dirties and name not in key_names:
-                        if col.default is not None or col.required:
-                            # place identical non-None values in the
-                            # ValueManager's value and previous_value
-                            # attributes.
-                            manager = cqlengine_instance._values[name]
-                            non_none = get_non_none_for_column(col)
-                            manager.value = non_none
-                            manager.previous_value = non_none
+                update.id_mapped_class.objects(**arg).batch(batch).update(**dirties)
                 del update._dirties
-                cqlengine_instance.batch(batch).update()
         # It would seem that batch does not work with counter?
         #with BatchQuery() as batch:
         for create in counter_creates:
@@ -671,29 +655,6 @@ class Empty(object):
         return False
 
 EMPTY = Empty()
-
-
-NON_NONE_BY_COLUMN = {
-    columns.Ascii: '__non_none__',
-    columns.Bytes: b'__non_none__',
-    columns.Text: u'__non_none__',
-    columns.Integer: 314159,
-    columns.BigInt: 54321,
-    columns.VarInt: 628318,
-    columns.UUID: UUID('3ba7a823-52cd-11e3-8d17-c8e0eb16059b'),
-    columns.Float: 3.1459,
-    columns.Decimal: 12.345,
-    columns.DateTime: datetime(1, 1, 1),
-    columns.Date: date(2, 2, 2),
-    columns.TimeUUID: UUID('d0a84a9e-52fa-11e3-ad4c-c8e0eb16059b'),
-    columns.Boolean: False,
-    columns.Set: set(),
-    columns.List: [],
-    columns.Map: {}
-}
-
-def get_non_none_for_column(col):
-    return NON_NONE_BY_COLUMN.get(type(col), u'__non_none_default__')
 
 
 class VerifyResult(object):
