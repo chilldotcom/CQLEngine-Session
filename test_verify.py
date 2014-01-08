@@ -27,6 +27,9 @@ def make_model(table_name, skip={}, different={}, index={'text_index': True}):
         uuida = columns.UUID(primary_key=True, default=uuid.uuid4)
         uuidb = get_col('uuidb', columns.UUID, kwargs={'primary_key':True, 'default':uuid.uuid4})
         uuidc = columns.UUID(primary_key=True, default=uuid.uuid4)
+        uuidd = get_col('uuidd', columns.UUID, kwargs={'primary_key':True, 'partition_key':True, 'default':uuid.uuid4})
+        uuide = get_col('uuide', columns.UUID, kwargs={'primary_key':True, 'partition_key':True, 'default':uuid.uuid4})
+        uuidf = get_col('uuidf', columns.UUID, kwargs={'primary_key':True, 'partition_key':True, 'default':uuid.uuid4})
         title = get_col('title', columns.Text)
         text_index = get_col('text_index', columns.Text)
         done = columns.Boolean()
@@ -141,12 +144,129 @@ class VerifyTest(unittest.TestCase):
         results = verify(Foo2)
         assert len(results) == 1
         result = results[0]
-
         assert not result.extra
         assert not result.missing
         assert len(result.different) == 1
         assert 'uuidb' in result.different
 
+    def test_has_extra_partition_key_field(self):
+        Foo = make_model(table_name='foo_bar')
+        sync_table(Foo)
+
+        Foo2 = make_model(table_name='foo_bar', skip=set(['uuide']))
+        results = verify(Foo2)
+        [result.report() for result in results]
+        assert len(results) == 1
+        result = results[0]
+
+        assert not result.missing
+        assert not result.different
+        assert not result.missing_indexes
+        assert not result.extra_indexes
+        assert len(result.extra) == 1
+        assert 'uuide' in result.extra
+
+    def test_has_missing_partition_key_field(self):
+        Foo = make_model(table_name='foo_bar', skip=set(['uuide']))
+        sync_table(Foo)
+
+        Foo2 = make_model(table_name='foo_bar')
+        results = verify(Foo2)
+        [result.report() for result in results]
+        assert len(results) == 1
+        result = results[0]
+
+        assert not result.is_missing
+        assert not result.extra
+        assert not result.different
+        assert not result.missing_indexes
+        assert not result.extra_indexes
+        assert len(result.missing) == 1
+        assert 'uuide' in result.missing
+
+    def test_has_different_partition_key(self):
+        Foo = make_model(table_name='foo_bar')
+        sync_table(Foo)
+
+        Foo2 = make_model(table_name='foo_bar', different={'uuide': columns.Ascii(primary_key=True, partition_key=True, default=uuid.uuid4)})
+        results = verify(Foo2)
+        assert len(results) == 1
+        result = results[0]
+        assert not result.extra
+        assert not result.missing
+        assert len(result.different) == 1
+        assert 'uuide' in result.different
+
+    def test_has_extra_single_partition_key_field(self):
+        Foo = make_model(table_name='foo_bar', skip={'uuidd', 'uuidf'})
+        sync_table(Foo)
+
+        Foo2 = make_model(table_name='foo_bar', skip={'uuidd', 'uuide', 'uuidf'})
+        results = verify(Foo2)
+        [result.report() for result in results]
+        assert len(results) == 1
+        result = results[0]
+
+        # Note that 'partition' will be 'missing' too because Foo.partition
+        # gets a default 'partition_key=True' when all the explicit
+        # partition_keys are skipped.  So, the verify will report a partition
+        # key 'partition'.
+        # When uuide is not skipped, Foo2.partition is not a partition key.
+        # When verifying Foo2 against Foo's schema partition will show up
+        # as 'missing' because it is a missing partition_key (not a missing
+        # column.)
+        assert len(result.missing) == 1
+        assert 'partition' in result.missing
+        assert not result.different
+        assert not result.missing_indexes
+        assert not result.extra_indexes
+        assert len(result.extra) == 1
+        assert 'uuide' in result.extra
+
+    def test_has_missing_single_partition_key_field(self):
+        Foo = make_model(table_name='foo_bar', skip={'uuidd', 'uuide', 'uuidf'})
+        sync_table(Foo)
+
+        Foo2 = make_model(table_name='foo_bar', skip={'uuidd', 'uuidf'})
+        results = verify(Foo2)
+        [result.report() for result in results]
+        assert len(results) == 1
+        result = results[0]
+
+        assert not result.is_missing
+        assert not result.extra
+        assert not result.different
+        assert not result.missing_indexes
+        assert not result.extra_indexes
+        # Note that 'partition' will be 'missing' too because Foo.partition
+        # gets a default 'partition_key=True' when all the explicit
+        # partition_keys are skipped.  So, the verify will report a partition
+        # key 'partition'.
+        # When uuide is not skipped, Foo2.partition is not a partition key.
+        # When verifying Foo2 against Foo's schema partition will show up
+        # as 'missing' because it is a missing partition_key (not a missing
+        # column.)
+        assert len(result.missing) == 2
+        assert 'uuide' in result.missing
+        assert 'partition' in result.missing
+
+    def test_has_different_single_partition_key(self):
+        Foo = make_model(table_name='foo_bar', skip={'uuidd', 'uuidf'})
+        sync_table(Foo)
+
+        Foo2 = make_model(table_name='foo_bar',
+                          skip={'uuidd', 'uuidf'},
+                          different={
+                              'uuide': columns.Ascii(primary_key=True,
+                                                     partition_key=True,
+                                                     default=uuid.uuid4)})
+        results = verify(Foo2)
+        assert len(results) == 1
+        result = results[0]
+        assert not result.extra
+        assert not result.missing
+        assert len(result.different) == 1
+        assert 'uuide' in result.different
 
     def test_has_ok_index(self):
         Foo = make_model(table_name='foo_bar')
@@ -215,9 +335,9 @@ class VerifyTest(unittest.TestCase):
         results = verify(Foo, Bar)
         assert not results
 
-    def has_extra_cf(self):
+    def test_has_extra_cf(self):
         Foo = make_model(table_name='foo_bar')
-        Bar = make_model(table_name='Bar')
+        Bar = make_model(table_name='baz_qux')
         sync_table(Foo)
         sync_table(Bar)
 
@@ -225,28 +345,16 @@ class VerifyTest(unittest.TestCase):
         [result.report() for result in results]
         assert len(results) == 1
         result = results[0]
-        assert result.model == u'Bar'
+        assert result.model == u'baz_qux'
         assert result.is_extra
 
-    def has_missing_cf(self):
+    def test_has_missing_cf(self):
         Foo = make_model(table_name='foo_bar')
-        Bar = make_model(table_name='Bar')
+        Bar = make_model(table_name='baz_qux')
         sync_table(Foo)
-        #sync_table(Bar)
 
         results = verify(Foo, Bar)
         [result.report() for result in results]
-        assert len(results) == 2
-        if results[0].model == Foo:
-            foo_result = results[0]
-            bar_result = results[1]
-        else:
-            foo_result = results[1]
-            bar_result = results[0]
-        assert not foo_result.is_missing
-        assert not foo_result.extra
-        assert not foo_result.missing
-        assert not foo_result.different
-
+        assert len(results) == 1
+        bar_result = results[0]
         assert bar_result.is_missing
-

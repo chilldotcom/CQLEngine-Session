@@ -679,7 +679,10 @@ class VerifyResult(object):
                 self.extra_indexes
 
     def report(self):
-        name = self.model.__name__
+        try:
+            name = self.model.__name__
+        except:
+            name = self.model
         if self.is_missing:
             return '{} does not have a column family (expected "{}")'.format(
                     name,
@@ -712,7 +715,8 @@ class VerifyResult(object):
         return 'VerifyResult({})'.format(self.model.__name__)
 
 
-def verify(*models):
+def verify(*models, **kwargs):
+    ignore_extra = kwargs.get('ignore_extra', {})
     results = {}
     by_keyspace = {}
     by_cf = {}
@@ -735,16 +739,20 @@ def verify(*models):
                 {'ks_name': ks_name}
             )
         tables = {}
-        for columnfamily_name, key_aliases, key_validator, column_aliases, comparator in query_result.results:
-            column_aliases = json.loads(column_aliases)
-            key_aliases = json.loads(key_aliases)[0]
-            column_types = comparator[len('org.apache.cassandra.db.marshal.CompositeType('):].split(',')[:len(column_aliases)]
+        for columnfamily_name, partition_keys, partition_key_types, primary_keys, primary_key_types in query_result.results:
+            partition_keys = json.loads(partition_keys)
+            if len(partition_keys) > 1:
+                partition_key_types = partition_key_types[len('org.apache.cassandra.db.marshal.CompositeType('):-1].split(',')[:len(partition_keys)]
+            else:
+                partition_key_types = [partition_key_types]
+            primary_keys = json.loads(primary_keys)
+            primary_key_types = primary_key_types[len('org.apache.cassandra.db.marshal.CompositeType('):].split(',')[:len(primary_keys)]
             item = {
                 'cf': columnfamily_name,
-                'primary_key': key_aliases,
-                'primary_key_type': key_validator,
-                'column_aliases': column_aliases,
-                'column_types': column_types
+                'partition_keys': partition_keys,
+                'partition_key_types': partition_key_types,
+                'primary_keys': primary_keys,
+                'primary_key_types': primary_key_types
             }
             tables[columnfamily_name] = item
         for model in models:
@@ -779,15 +787,7 @@ def verify(*models):
                             local_metadata = _type_to_metadata(col.db_type)
                             if local_metadata != field_type:
                                 result.different.add(col.column_name)
-                name = table_info['primary_key']
-                if name not in db_field_names:
-                    result.extra.add(name)
-                else:
-                    col = db_field_names[name]
-                    local_metadata = _type_to_metadata(col.db_type)
-                    if local_metadata != table_info['primary_key_type']:
-                        result.different.add(col.column_name)
-                for name, kind in zip(table_info['column_aliases'], table_info['column_types']):
+                for name, kind in zip(table_info['partition_keys'], table_info['partition_key_types']):
                     if name not in db_field_names:
                         result.extra.add(name)
                     else:
@@ -795,26 +795,44 @@ def verify(*models):
                         local_metadata = _type_to_metadata(col.db_type)
                         if local_metadata != kind:
                             result.different.add(col.column_name)
+                for name, kind in zip(table_info['primary_keys'], table_info['primary_key_types']):
+                    if name not in db_field_names:
+                        result.extra.add(name)
+                    else:
+                        col = db_field_names[name]
+                        local_metadata = _type_to_metadata(col.db_type)
+                        if col.clustering_order == 'desc':
+                            local_metadata = u'org.apache.cassandra.db.marshal.ReversedType({})'.format(local_metadata)
+                        if local_metadata != kind:
+                            result.different.add(col.column_name)
 
                 for name, col in db_field_names.items():
                     # Handle primary keys from table-level data.
                     if col.primary_key:
-                        if name != table_info['primary_key'] and name not in table_info['column_aliases']:
-                            result.missing.add(col.column_name)
-                        else:
-                            local_metadata = _type_to_metadata(col.db_type)
-                            if name == table_info['primary_key']:
-                                if local_metadata != table_info['primary_key_type']:
-                                    result.different.add(col.column_name)
+                        if col.partition_key:
+                            if name not in table_info['partition_keys']:
+                                result.missing.add(col.column_name)
                             else:
-                                i = table_info['column_aliases'].index(name)
-                                if local_metadata != table_info['column_types'][i]:
+                                local_metadata = _type_to_metadata(col.db_type)
+                                i = table_info['partition_keys'].index(name)
+                                if local_metadata != table_info['partition_key_types'][i]:
                                     result.different.add(col.column_name)
+                        else:
+                            if name not in table_info['primary_keys']:
+                                result.missing.add(col.column_name)
+                            else:
+                                local_metadata = _type_to_metadata(col.db_type)
+                                if col.clustering_order == 'desc':
+                                    local_metadata = u'org.apache.cassandra.db.marshal.ReversedType({})'.format(local_metadata)
+                                i = table_info['primary_keys'].index(name)
+                                if local_metadata != table_info['primary_key_types'][i]:
+                                    result.different.add(col.column_name)
+
                     # Primary keys are not listed in fields.
                     if not col.primary_key and name not in fields:
                         result.missing.add(col.column_name)
         for cf in tables:
-            if cf not in by_cf:
+            if cf not in by_cf and cf not in ignore_extra:
                 result = VerifyResult(cf)
                 result.is_extra = True
                 results[cf] = result
@@ -844,9 +862,14 @@ def verify(*models):
                     cassandra_indexes[cf] = set([index_name])
         for cf, index_names in cassandra_indexes.items():
             if cf not in model_indexes:
-                model = by_cf[cf]
-                result = results[model]
-                result.extra_indexes.add(index_name)
+                if cf not in by_cf:
+                    result = VerifyResult(cf)
+                    result.is_extra = True
+                    results[cf] = result
+                else:
+                    model = by_cf[cf]
+                    result = results[model]
+                    result.extra_indexes.add(index_name)
             else:
                 this_model_indexes = model_indexes[cf]
                 if index_name not in this_model_indexes:
