@@ -39,6 +39,7 @@ from cqlengine.exceptions import ValidationError
 from cqlengine.management import get_fields, sync_table
 from cqlengine.models import BaseModel, ColumnQueryEvaluator, ModelMetaClass
 from cqlengine.query import BatchQuery, ModelQuerySet
+from cqlengine.statements import WhereClause, SelectStatement, DeleteStatement, UpdateStatement, AssignmentClause, InsertStatement, BaseCQLStatement, MapUpdateClause, MapDeleteClause, ListUpdateClause, SetUpdateClause, CounterUpdateClause
 
 
 class AttributeUnavailable(Exception):
@@ -138,9 +139,29 @@ class Session(object):
 
         with BatchQuery() as batch:
             for create in creates:
-                key_names = create.id_mapped_class._columns.keys()
-                arg = {name: getattr(create, name) for name in key_names}
-                create.id_mapped_class.batch(batch).create(**arg)
+                # Note we skip a lot of cqlengine code and create the
+                # insert statement directly.
+                # (this is the non-optimized code that is replaced below)
+                #key_names = create.id_mapped_class._columns.keys()
+                #arg = {name: getattr(create, name) for name in key_names}
+                #create.id_mapped_class.batch(batch).create(**arg)
+                # (end non-optimized code)
+                # (begin optimized)
+                # note: it might save time to memoize column family name
+                # note: cqlengine-session doesn't yet support 'ttl'
+                insert = InsertStatement(create.id_mapped_class.column_family_name())#, ttl=self._ttl)
+                for name, col in create.id_mapped_class._columns.items():
+                    val = col.validate(getattr(create, name))
+                    if col._val_is_null(val):
+                        continue
+                    insert.add_assignment_clause(AssignmentClause(
+                        col.db_field_name,
+                        col.to_database(val)))
+                # skip query execution if it's empty
+                # caused by pointless update queries
+                if not insert.is_empty:
+                    batch.add_query(insert)
+                # (end optimized)
                 del create._created
             for update in updates:
                 key_names = update._primary_keys.keys()
