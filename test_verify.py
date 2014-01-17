@@ -60,7 +60,7 @@ class VerifyTest(unittest.TestCase):
         keyspace = 'testkeyspace{}'.format(str(uuid.uuid1()).replace('-', ''))
         self.keyspace = keyspace
         # Configure cqlengine's global connection pool.
-        setup('localhost:9160', default_keyspace=keyspace)
+        setup(['localhost:9160'], default_keyspace=keyspace)
         create_keyspace(keyspace)
 
     def tearDown(self):

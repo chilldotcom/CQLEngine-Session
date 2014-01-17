@@ -56,7 +56,7 @@ class BaseTestCase(unittest.TestCase):
         self.keyspace = keyspace
         clear()
         # Configure cqlengine's global connection pool.
-        setup('localhost:9160', default_keyspace=keyspace)
+        setup(['localhost:9160'], default_keyspace=keyspace)
         create_keyspace(keyspace)
         for class_name, creator in self.model_classes.items():
             setattr(self, class_name, creator)
