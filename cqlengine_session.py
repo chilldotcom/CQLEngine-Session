@@ -636,7 +636,7 @@ class ColumnDescriptor(object):
             try:
                 return instance._values[self.column.column_name]
             except (AttributeError, KeyError,):
-                raise AttributeUnavailable
+                raise AttributeUnavailable(instance, self.column.column_name)
         else:
             return self.query_evaluator
 
