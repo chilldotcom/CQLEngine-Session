@@ -53,6 +53,25 @@ def make_model(table_name, skip={}, different={}, index={'text_index': True}):
         mapcol = columns.Map(columns.Text, columns.Integer)
     return TestTable
 
+def make_counter_model(table_name, skip={}, different={}, index={'text_index': True}):
+    def get_col(name, col, args=(), kwargs={}):
+        if name in skip:
+            return None
+        if name in different:
+            return different[name]
+        if name in index:
+            return col(*args, index=True, **kwargs)
+        else:
+            return col(*args, **kwargs)
+
+    class TestCountTable(Model):
+        __table_name__ = table_name
+        uuid = columns.UUID(primary_key=True, default=uuid.uuid4)
+        count1 = get_col('count1', columns.Counter)
+        count2 = get_col('count2', columns.Counter)
+        count3 = get_col('count3', columns.Counter)
+    return TestCountTable
+
 
 class VerifyTest(unittest.TestCase):
 
@@ -358,3 +377,11 @@ class VerifyTest(unittest.TestCase):
         assert len(results) == 1
         bar_result = results[0]
         assert bar_result.is_missing
+
+    def test_counter_verify(self):
+        Foo = make_counter_model(table_name='foo_bar')
+        sync_table(Foo)
+
+        results = verify(Foo)
+        assert len(results) == 0
+

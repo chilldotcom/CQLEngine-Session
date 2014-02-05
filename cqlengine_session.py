@@ -793,7 +793,6 @@ def verify(*models, **kwargs):
                         result.extra.add(name)
                     # If field is present, check the type.
                     else:
-                        # (skip containers for the moment)
                         col = db_field_names[name]
                         if isinstance(col, columns.Map):
                             if not field_type.startswith('org.apache.cassandra.db.marshal.MapType'):
@@ -941,6 +940,7 @@ def _type_to_metadata(s):
         'varint': 'org.apache.cassandra.db.marshal.IntegerType',
         'timeuuid': 'org.apache.cassandra.db.marshal.TimeUUIDType',
         'ascii': 'org.apache.cassandra.db.marshal.AsciiType',
-        'blob': 'org.apache.cassandra.db.marshal.BytesType'
+        'blob': 'org.apache.cassandra.db.marshal.BytesType',
+        'counter': 'org.apache.cassandra.db.marshal.CounterColumnType'
     }.get(s, s)
 
