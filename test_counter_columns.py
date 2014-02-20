@@ -115,5 +115,18 @@ class TestCounterColumn(BaseTestCase):
         new = TestCounterModel.get(partition=key)
         assert new.counter == 10
 
+    def test_consecutive_updates(self):
+        instance = TestCounterModel.create()
+        key = instance.partition
+        instance.counter += 3
+        save()
 
+        instance.counter += 7
+        save()
 
+        instance.counter += 7
+        save()
+        clear()
+
+        new = TestCounterModel.get(partition=key)
+        assert new.counter == 17
