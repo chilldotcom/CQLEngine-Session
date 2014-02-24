@@ -118,15 +118,31 @@ class TestCounterColumn(BaseTestCase):
     def test_consecutive_updates(self):
         instance = TestCounterModel.create()
         key = instance.partition
+        with self.assertRaises(AttributeError):
+            instance.counter = 3
         instance.counter += 3
+        assert instance.counter == 3
         save()
+        assert instance.counter == 3
 
         instance.counter += 7
+        assert instance.counter == 10
         save()
+        assert instance.counter == 10
 
         instance.counter += 7
+        assert instance.counter == 17
         save()
+        assert instance.counter == 17
         clear()
 
         new = TestCounterModel.get(partition=key)
         assert new.counter == 17
+
+        new.counter += new.counter
+        assert new.counter == 34
+        save()
+        clear()
+
+        new = TestCounterModel.get(partition=key)
+        assert new.counter == 34

@@ -34,10 +34,11 @@ import threading
 from uuid import UUID
 
 from cqlengine import columns
-from cqlengine.connection import connection_manager
+from cqlengine.connection import connection_manager, execute
 from cqlengine.exceptions import ValidationError
 from cqlengine.management import get_fields, sync_table
 from cqlengine.models import BaseModel, ColumnQueryEvaluator, ModelMetaClass
+from cqlengine.operators import EqualsOperator
 from cqlengine.query import BatchQuery, ModelQuerySet
 from cqlengine.statements import WhereClause, SelectStatement, DeleteStatement, UpdateStatement, AssignmentClause, InsertStatement, BaseCQLStatement, MapUpdateClause, MapDeleteClause, ListUpdateClause, SetUpdateClause, CounterUpdateClause
 
@@ -163,6 +164,10 @@ class Session(object):
                     batch.add_query(insert)
                 # (end optimized)
                 del create._created
+                try:
+                    del create._dirties
+                except AttributeError:
+                    pass
             for update in updates:
                 key_names = update._primary_keys.keys()
                 arg = {name: getattr(update, name) for name in key_names}
@@ -179,15 +184,27 @@ class Session(object):
                 if isinstance(col, columns.Counter):
                     val = getattr(create, name)
                     setattr(instance, name, val)
+            del create._created
+            try:
+                del create._dirties
+            except AttributeError:
+                pass
             instance.update()
         for update in counter_updates:
-            primary_key_names = update.id_mapped_class._primary_keys.keys()
-            arg = {name: getattr(update, name) for name in primary_key_names}
-            cqlengine_instance = update.id_mapped_class(**arg)
+            statement = UpdateStatement(update.id_mapped_class.column_family_name())#, ttl=self._ttl)
             for name, value in update._dirties.items():
-                setattr(cqlengine_instance, name, value)
+                col = update.id_mapped_class._columns[name]
+                clause = CounterUpdateClause(col.db_field_name, value, 0, column=col)
+                statement.add_assignment_clause(clause)
+
+            for name, col in update.id_mapped_class._primary_keys.items():
+                statement.add_where_clause(WhereClause(
+                    col.db_field_name,
+                    EqualsOperator(),
+                    col.to_database(getattr(update, name))
+                ))
+            execute(statement)
             del update._dirties
-            cqlengine_instance.update()
 #            for delete in self.deletes:
 #                raise NotImplementedError
         for callable, args, kwargs in self.call_after_save:
@@ -234,7 +251,10 @@ class SessionModelMetaClass(ModelMetaClass):
         # Make descriptors for the columns so the instances will get/set
         # using a ColumnDescriptor instance.
         for col_name, col in base._columns.iteritems():
-            base_attrs[col_name] = ColumnDescriptor(col)
+            if isinstance(col, columns.Counter):
+                base_attrs[col_name] = CounterColumnDescriptor(col)
+            else:
+                base_attrs[col_name] = ColumnDescriptor(col)
         return IdMapMetaClass(name, (IdMapModel,), base_attrs)
 
 
@@ -411,6 +431,7 @@ class IdMapModel(object):
     @property
     def _key(self):
         return getattr(self, self._key_name)
+
 
 class WrappedQuerySet(ModelQuerySet):
     def __init__(self, session_instance, session_class):
@@ -670,6 +691,72 @@ class ColumnDescriptor(object):
             else:
                 raise AttributeError('cannot delete {} columns'.format(self.column.column_name))
 
+
+class WrappedInt(int):
+    # Instantiator has to assign 'instance' and 'name' to this instance.
+
+    def __iadd__(self, value):
+        instance = self.instance
+        name = self.name
+        # Increment the current value, if any.
+        try:
+            values = instance._values
+        except AttributeError:
+            instance._values = {name: value}
+        else:
+            try:
+                values[name] += value
+            except AttributeError:
+                values[name] = value
+
+        # Increment the dirty value, if any.
+        try:
+            dirties = instance._dirties
+        except AttributeError:
+            instance._dirties = {name: value}
+        else:
+            try:
+                dirties[name] += value
+            except AttributeError:
+                dirties[name] = value
+
+        return self
+
+class CounterColumnDescriptor(ColumnDescriptor):
+    # This was made to get += to do the right thing for counters.
+    # see http://stackoverflow.com/questions/11987949/how-to-implement-iadd-for-a-python-property
+    def __get__(self, instance, owner):
+        """
+        Returns either the value or column, depending
+        on if an instance is provided or not
+
+        :param instance: the model instance
+        :type instance: Model
+        """
+        if instance:
+            try:
+                existing_value = instance._values[self.column.column_name] or 0
+                wint = WrappedInt(existing_value)
+                wint.instance = instance
+                wint.name = self.column.column_name
+                return wint
+            except (AttributeError, KeyError,):
+                raise AttributeUnavailable(instance, self.column.column_name)
+        else:
+            return self.query_evaluator
+
+    def __set__(self, instance, value):
+        """
+        Sets the value on an instance, raises an exception with classes
+        TODO: use None instance to create update statements
+        """
+        if instance:
+            if isinstance(value, WrappedInt):
+                pass
+            else:
+                raise AttributeError('cannot assign to counter, use +=')
+        else:
+            raise AttributeError('cannot reassign column values')
 
 class Empty(object):
     def __contains__(self, item):
