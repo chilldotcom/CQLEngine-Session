@@ -432,6 +432,32 @@ class IdMapModel(object):
     def _key(self):
         return getattr(self, self._key_name)
 
+    def blind_increment(self, name, value):
+        col = self.id_mapped_class._columns[name]
+        if not isinstance(col, columns.Counter):
+            raise ValueError(u'Can only blind increment Counter columns, %s is a %s' % (name, type(col)))
+        # Increment the current value, if any.
+        try:
+            values = self._values
+        except AttributeError:
+            self._values = {name: value}
+        else:
+            try:
+                values[name] += value
+            except KeyError:
+                values[name] = value
+
+        # Increment the dirty value, if any.
+        try:
+            dirties = self._dirties
+        except AttributeError:
+            self._dirties = {name: value}
+        else:
+            try:
+                dirties[name] += value
+            except KeyError:
+                dirties[name] = value
+
 
 class WrappedQuerySet(ModelQuerySet):
     def __init__(self, session_instance, session_class):
@@ -742,7 +768,7 @@ class CounterColumnDescriptor(ColumnDescriptor):
                 else:
                     try:
                         values[name] += value
-                    except AttributeError:
+                    except KeyError:
                         values[name] = value
 
                 # Increment the dirty value, if any.
@@ -753,7 +779,7 @@ class CounterColumnDescriptor(ColumnDescriptor):
                 else:
                     try:
                         dirties[name] += value
-                    except AttributeError:
+                    except KeyError:
                         dirties[name] = value
             else:
                 raise AttributeError('cannot assign to counter, use +=')

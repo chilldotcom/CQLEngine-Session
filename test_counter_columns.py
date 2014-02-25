@@ -103,12 +103,13 @@ class TestCounterColumn(BaseTestCase):
     def test_blind_update(self):
         instance = TestCounterModel.create()
         key = instance.partition
-        instance.counter += 3
+        cluster = instance.cluster
+        instance.blind_increment('counter', 3)
         save()
         clear()
 
-        instance = TestCounterModel(key)
-        instance.counter += 7
+        instance = TestCounterModel(key, cluster)
+        instance.blind_increment('counter', 7)
         save()
         clear()
 
@@ -125,7 +126,9 @@ class TestCounterColumn(BaseTestCase):
         save()
         assert instance.counter == 3
 
-        instance.counter += 7
+        instance.counter += 3
+        assert instance.counter == 6
+        instance.counter += 4
         assert instance.counter == 10
         save()
         assert instance.counter == 10
