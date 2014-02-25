@@ -146,3 +146,7 @@ class TestCounterColumn(BaseTestCase):
 
         new = TestCounterModel.get(partition=key)
         assert new.counter == 34
+
+        x = new.counter
+        x += 20
+        assert new.counter == 34

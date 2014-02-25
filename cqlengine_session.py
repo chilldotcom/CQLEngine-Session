@@ -692,35 +692,18 @@ class ColumnDescriptor(object):
                 raise AttributeError('cannot delete {} columns'.format(self.column.column_name))
 
 
+class WrappedResponse(int):
+    # This is necessary so that set knows it is getting set as the result of
+    # an __iadd__ call and not a regular assignment.
+    # Doing this is necessary because a WrappedInt, as below, would be
+    # incrementable and would side-effect the counter.
+    pass
+
+
 class WrappedInt(int):
-    # Instantiator has to assign 'instance' and 'name' to this instance.
-
     def __iadd__(self, value):
-        instance = self.instance
-        name = self.name
-        # Increment the current value, if any.
-        try:
-            values = instance._values
-        except AttributeError:
-            instance._values = {name: value}
-        else:
-            try:
-                values[name] += value
-            except AttributeError:
-                values[name] = value
+        return WrappedResponse(value)
 
-        # Increment the dirty value, if any.
-        try:
-            dirties = instance._dirties
-        except AttributeError:
-            instance._dirties = {name: value}
-        else:
-            try:
-                dirties[name] += value
-            except AttributeError:
-                dirties[name] = value
-
-        return self
 
 class CounterColumnDescriptor(ColumnDescriptor):
     # This was made to get += to do the right thing for counters.
@@ -736,10 +719,7 @@ class CounterColumnDescriptor(ColumnDescriptor):
         if instance:
             try:
                 existing_value = instance._values[self.column.column_name] or 0
-                wint = WrappedInt(existing_value)
-                wint.instance = instance
-                wint.name = self.column.column_name
-                return wint
+                return WrappedInt(existing_value)
             except (AttributeError, KeyError,):
                 raise AttributeUnavailable(instance, self.column.column_name)
         else:
@@ -751,8 +731,30 @@ class CounterColumnDescriptor(ColumnDescriptor):
         TODO: use None instance to create update statements
         """
         if instance:
-            if isinstance(value, WrappedInt):
-                pass
+            if isinstance(value, WrappedResponse):
+                name = self.column.column_name
+                value = int(value)
+                # Increment the current value, if any.
+                try:
+                    values = instance._values
+                except AttributeError:
+                    instance._values = {name: value}
+                else:
+                    try:
+                        values[name] += value
+                    except AttributeError:
+                        values[name] = value
+
+                # Increment the dirty value, if any.
+                try:
+                    dirties = instance._dirties
+                except AttributeError:
+                    instance._dirties = {name: value}
+                else:
+                    try:
+                        dirties[name] += value
+                    except AttributeError:
+                        dirties[name] = value
             else:
                 raise AttributeError('cannot assign to counter, use +=')
         else:
