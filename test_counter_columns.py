@@ -2,7 +2,7 @@ import unittest
 import uuid
 from uuid import uuid4
 
-from cqlengine_session import clear, save, SessionModel
+from cqlengine_session import AttributeUnavailable, clear, save, SessionModel
 from cqlengine import columns
 from cqlengine.connection import setup
 from cqlengine.management import create_keyspace, delete_keyspace
@@ -105,11 +105,14 @@ class TestCounterColumn(BaseTestCase):
         key = instance.partition
         cluster = instance.cluster
         instance.blind_increment('counter', 3)
+        assert instance.counter == 3
         save()
         clear()
 
         instance = TestCounterModel(key, cluster)
         instance.blind_increment('counter', 7)
+        with self.assertRaises(AttributeUnavailable):
+            instance.counter
         save()
         clear()
 

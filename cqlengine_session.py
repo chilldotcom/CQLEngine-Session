@@ -440,12 +440,12 @@ class IdMapModel(object):
         try:
             values = self._values
         except AttributeError:
-            self._values = {name: value}
+            pass
         else:
             try:
                 values[name] += value
             except KeyError:
-                values[name] = value
+                pass
 
         # Increment the dirty value, if any.
         try:
