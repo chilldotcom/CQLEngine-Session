@@ -866,7 +866,7 @@ class IntrospectionTestCase(BaseTestCase):
         assert self.Todo.pub_date
         assert not self.Todo._has_counter
         assert 1 == len(self.Todo._primary_keys)
-        assert self.Todo._primary_keys['uuid'] == self.Todo.uuid
+        assert self.Todo._primary_keys['uuid'] == self.Todo._columns['uuid']
 
         assert self.MultiTodo.uuid
         assert self.MultiTodo.title
@@ -875,17 +875,17 @@ class IntrospectionTestCase(BaseTestCase):
         assert self.MultiTodo.pub_date
         assert not self.MultiTodo._has_counter
         assert 3 == len(self.MultiTodo._primary_keys)
-        assert [('partition', self.MultiTodo.partition),
-                ('uuid', self.MultiTodo.uuid),
-                ('pub_date', self.MultiTodo.pub_date)] == list(self.MultiTodo._primary_keys.iteritems())
+        assert [('partition', self.MultiTodo._columns['partition']),
+                ('uuid', self.MultiTodo._columns['uuid']),
+                ('pub_date', self.MultiTodo._columns['pub_date'])] == list(self.MultiTodo._primary_keys.iteritems())
 
         assert self.Counter.partition
         assert self.Counter.cluster
         assert self.Counter.counter
         assert self.Counter._has_counter
         assert 2 == len(self.Counter._primary_keys)
-        assert [('partition', self.Counter.partition),
-                ('cluster', self.Counter.cluster)] == list(self.Counter._primary_keys.iteritems())
+        assert [('partition', self.Counter._columns['partition']),
+                ('cluster', self.Counter._columns['cluster'])] == list(self.Counter._primary_keys.iteritems())
 
 class SubClassTestCase(BaseTestCase):
 
