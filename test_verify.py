@@ -165,6 +165,7 @@ class VerifyTest(unittest.TestCase):
         result = results[0]
         assert not result.extra
         assert not result.missing
+        print result.different
         assert len(result.different) == 1
         assert 'uuidb' in result.different
 
