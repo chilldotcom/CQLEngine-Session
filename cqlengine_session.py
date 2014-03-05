@@ -921,11 +921,6 @@ def verify(*models, **kwargs):
                         else:
                             local_metadata = _type_to_metadata(col.db_type)
                             if local_metadata != field_type:
-                                print '----------'
-                                print col.column_name
-                                print col.db_type
-                                print local_metadata
-                                print field_type
                                 result.different.add(col.column_name)
                 for name, kind in zip(table_info['partition_keys'], table_info['partition_key_types']):
                     if name not in db_field_names:
@@ -963,15 +958,9 @@ def verify(*models, **kwargs):
                             else:
                                 local_metadata = _type_to_metadata(col.db_type)
                                 if col.clustering_order == 'desc':
-                                    print '123'
                                     local_metadata = u'org.apache.cassandra.db.marshal.ReversedType({})'.format(local_metadata)
                                 i = table_info['primary_keys'].index(name)
                                 if local_metadata != table_info['primary_key_types'][i]:
-                                    print col.column_name
-                                    print col.db_type
-                                    print local_metadata
-                                    print table_info['primary_key_types'][i]
-                                    print "yyy"
                                     result.different.add(col.column_name)
 
                     # Primary keys are not listed in fields.
