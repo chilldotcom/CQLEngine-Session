@@ -197,6 +197,16 @@ def make_instance_range_model():
 
     return Todo
 
+def make_todo_model_plus_extra():
+    class Todo(SessionModel):
+        uuid = columns.UUID(primary_key=True, default=uuid.uuid4)
+        title = columns.Text(max_length=60)
+        text = columns.Text()
+        text2 = columns.Text()
+        done = columns.Boolean()
+        pub_date = columns.DateTime()
+
+    return Todo
 
 
 class BaseTestCase(unittest.TestCase):
@@ -935,5 +945,30 @@ class InstanceValidationTestCase(BaseTestCase):
         assert todo.col456 == 5
 
 
+class ExtraColumnsTestCase(unittest.TestCase):
 
+    def setUp(self):
+        keyspace = 'testkeyspace{}'.format(str(uuid.uuid1()).replace('-', ''))
+        self.keyspace = keyspace
+        clear()
+        # Configure cqlengine's global connection pool.
+        setup(['localhost:9160'], default_keyspace=keyspace)
+        create_keyspace(keyspace)
+
+    def tearDown(self):
+        delete_keyspace(self.keyspace)
+
+    def test_select_star_with_old_db(self):
+        Foo = make_todo_model_plus_extra()
+        Foo.sync_table()
+        f1 = Foo.create(title='first', text='text11', text2='text21')
+        f1_key = f1.uuid
+        f2 = Foo.create(title='second', text='text12', text2='text22')
+        f2_key = f2.uuid
+        save()
+
+        Foo2 = make_todo_model()
+        Foo2.get(uuid=f1_key)
+
+        assert True
 
