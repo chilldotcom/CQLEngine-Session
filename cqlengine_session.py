@@ -408,17 +408,20 @@ class IdMapModel(object):
         for name, value in values.items():
             if name in primary_keys:
                 continue
-            col = cls.id_mapped_class._columns[name]
-            if isinstance(col, columns.BaseContainerColumn):
-                if isinstance(col, columns.Set):
-                    value = OwnedSet(instance, name, col.to_python(value))
-                elif isinstance(col, columns.List):
-                    value = OwnedList(instance, name, col.to_python(value))
-                elif isinstance(col, columns.Map):
-                    value = OwnedMap(instance, name, col.to_python(value))
-            elif value is not None:
-                value = col.to_python(value)
-            cleaned_values[name] = value
+            # Ignore results for columns returned that are not in the schema.
+            # (They may be present as a result of migrating an existing db.)
+            col = cls.id_mapped_class._columns.get(name)
+            if col:
+                if isinstance(col, columns.BaseContainerColumn):
+                    if isinstance(col, columns.Set):
+                        value = OwnedSet(instance, name, col.to_python(value))
+                    elif isinstance(col, columns.List):
+                        value = OwnedList(instance, name, col.to_python(value))
+                    elif isinstance(col, columns.Map):
+                        value = OwnedMap(instance, name, col.to_python(value))
+                elif value is not None:
+                    value = col.to_python(value)
+                cleaned_values[name] = value
         try:
             dirties = instance._dirties
         except AttributeError:

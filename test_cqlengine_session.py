@@ -968,7 +968,7 @@ class ExtraColumnsTestCase(unittest.TestCase):
         save()
 
         Foo2 = make_todo_model()
-        Foo2.get(uuid=f1_key)
-
-        assert True
-
+        foo2_1 = Foo2.get(uuid=f1_key)
+        assert foo2_1.text == 'text11'
+        with self.assertRaises(AttributeError):
+            assert foo2_1.text2 == 'text21'
