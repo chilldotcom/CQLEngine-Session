@@ -248,6 +248,7 @@ class SessionModelMetaClass(ModelMetaClass):
             base_attrs.update(klass.__dict__)
         base_attrs.update(attrs)
         base_attrs['id_mapped_class'] = base
+        base_attrs['_promotable_column_names'] = [name for name, c in base_attrs['_columns'].iteritems() if not c.primary_key and not isinstance(c, columns.Counter)]
         # Make descriptors for the columns so the instances will get/set
         # using a ColumnDescriptor instance.
         for col_name, col in base._columns.iteritems():
@@ -369,8 +370,11 @@ class IdMapModel(object):
         """Set kwargs on entity without marking as dirty
 
         Invalid column names in kwargs raises an exception
+
+        Promoting the value of a key raises an exception
+
         """
-        extra_columns = set(kwargs.keys()) - set(self.id_mapped_class._columns.keys())
+        extra_columns = set(kwargs.keys()) - self._promotable_column_names
         if extra_columns:
             raise ValidationError("Incorrect columns passed: {}".format(extra_columns))
 
