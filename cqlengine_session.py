@@ -553,14 +553,6 @@ class OwnedSet(set):
         self.mark_dirty()
         return super(OwnedSet, self).pop(*args, **kwargs)
 
-    def remove(self, *args, **kwargs):
-        self.mark_dirty()
-        return super(OwnedSet, self).remove(*args, **kwargs)
-
-    def remove(self, *args, **kwargs):
-        self.mark_dirty()
-        return super(OwnedSet, self).remove(*args, **kwargs)
-
     def symmetric_difference_update(self, *args, **kwargs):
         self.mark_dirty()
         return super(OwnedSet, self).symmetric_difference_update(*args, **kwargs)
