@@ -248,7 +248,7 @@ class SessionModelMetaClass(ModelMetaClass):
             base_attrs.update(klass.__dict__)
         base_attrs.update(attrs)
         base_attrs['id_mapped_class'] = base
-        base_attrs['_promotable_column_names'] = [name for name, c in base_attrs['_columns'].iteritems() if not c.primary_key]
+        base_attrs['_promotable_column_names'] = set([name for name, c in base_attrs['_columns'].iteritems() if not c.primary_key])
         # Make descriptors for the columns so the instances will get/set
         # using a ColumnDescriptor instance.
         for col_name, col in base._columns.iteritems():

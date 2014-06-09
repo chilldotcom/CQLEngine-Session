@@ -81,18 +81,12 @@ class TestSetColumn(BaseTestCase):
 
     def test_deleting_last_item_should_succeed(self):
         m = TestSetModel.create()
-        print '{} {}'.format(m.int_set, type(m.int_set))
         m.int_set.add(5)
-        print '{} {}'.format(m.int_set, type(m.int_set))
         save()
-        print '{} {}'.format(m.int_set, type(m.int_set))
         m.int_set.remove(5)
-        print '{} {}'.format(m.int_set, type(m.int_set))
         save()
-        print '{} {}'.format(m.int_set, type(m.int_set))
 
         m = TestSetModel.get(partition=m.partition)
-        print '{} {}'.format(m.int_set, type(m.int_set))
         self.assertNotIn(5, m.int_set)
 
     def test_empty_set_retrieval(self):
