@@ -644,6 +644,13 @@ class BasicTestCase(BaseTestCase):
         assert self.Todo.id_mapped_class.objects(uuid=todo2_key).get().text == 'changed2'
 
 
+    def test_promote(self):
+        todo1 = self.Todo.create(title='first', text='text1')
+        todo1_key = todo1.uuid
+        clear()
+        todo2 = self.Todo(todo1_key)
+        todo2.promote(done=True)
+
 class TestDefaultCase(BaseTestCase):
 
     model_classes = {'Todo': make_default_todo_model}
