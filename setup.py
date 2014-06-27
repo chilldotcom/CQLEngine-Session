@@ -15,7 +15,7 @@ setup(
         "Topic :: Software Development :: Libraries :: Python Modules",
     ],
     keywords='cassandra,cql,orm',
-    install_requires = ['cqlengine>=0.11'],
+    install_requires = ['cqlengine>=0.15.5'],
     py_modules=[
         'cqlengine_session',
     ],

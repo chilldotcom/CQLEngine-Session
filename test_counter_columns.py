@@ -4,7 +4,7 @@ from uuid import uuid4
 
 from cqlengine_session import AttributeUnavailable, clear, save, SessionModel
 from cqlengine import columns
-from cqlengine.connection import setup
+from cqlengine.connection import get_cluster, setup
 from cqlengine.management import create_keyspace, delete_keyspace
 from cqlengine.models import ModelDefinitionException
 from cqlengine.tests.base import BaseCassEngTestCase
@@ -25,7 +25,7 @@ class BaseTestCase(unittest.TestCase):
         self.keyspace = keyspace
         clear()
         # Configure cqlengine's global connection pool.
-        setup(['localhost:9160'], default_keyspace=keyspace)
+        setup(['localhost'], default_keyspace=keyspace)
         create_keyspace(keyspace)
         for class_name, creator in self.model_classes.items():
             setattr(self, class_name, creator)
@@ -34,6 +34,7 @@ class BaseTestCase(unittest.TestCase):
 
     def tearDown(self):
         delete_keyspace(self.keyspace)
+        get_cluster().shutdown()
 
 
 class TestClassConstruction(BaseTestCase):

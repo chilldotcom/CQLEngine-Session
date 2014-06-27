@@ -33,8 +33,9 @@ import json
 import threading
 from uuid import UUID
 
+from cassandra.query import SimpleStatement
 from cqlengine import columns
-from cqlengine.connection import connection_manager, execute
+import cqlengine.connection
 from cqlengine.exceptions import ValidationError
 from cqlengine.management import get_fields, sync_table
 from cqlengine.models import BaseModel, ColumnQueryEvaluator, ModelMetaClass
@@ -177,6 +178,7 @@ class Session(object):
         # It would seem that batch does not work with counter?
         #with BatchQuery() as batch:
         for create in counter_creates:
+            print 'xxx create'
             primary_key_names = create.id_mapped_class._primary_keys.keys()
             arg = {name: getattr(create, name) for name in primary_key_names}
             instance = create.id_mapped_class.create(**arg)
@@ -196,14 +198,21 @@ class Session(object):
                 col = update.id_mapped_class._columns[name]
                 clause = CounterUpdateClause(col.db_field_name, value, 0, column=col)
                 statement.add_assignment_clause(clause)
-
             for name, col in update.id_mapped_class._primary_keys.items():
+                print WhereClause(
+                    col.db_field_name,
+                    EqualsOperator(),
+                    col.to_database(getattr(update, name))
+                )
+                print getattr(update, name)
                 statement.add_where_clause(WhereClause(
                     col.db_field_name,
                     EqualsOperator(),
                     col.to_database(getattr(update, name))
                 ))
-            execute(statement)
+            params = statement.get_context()
+            statement = SimpleStatement(str(statement))
+            cqlengine.connection.session.execute(statement, params)
             del update._dirties
 #            for delete in self.deletes:
 #                raise NotImplementedError
@@ -400,10 +409,9 @@ class IdMapModel(object):
         sync_table(cls.id_mapped_class)
 
     @classmethod
-    def _construct_instance(cls, names, values):
+    def _construct_instance(cls, values):
         mapped_class = cls.id_mapped_class
         primary_keys = mapped_class._primary_keys
-        values = dict(zip(names, values))
         key = []
         for name, col in primary_keys.items():
             key.append(col.to_python(values[name]))
@@ -481,16 +489,14 @@ class WrappedQuerySet(ModelQuerySet):
 
         super(WrappedQuerySet, self).__init__(session_class.id_mapped_class)
 
-    def _get_result_constructor(self, names):
+    def _get_result_constructor(self):
         """ Returns a function that will be used to instantiate query results """
-        if not self._values_list:
-            return lambda values: self._session_class._construct_instance(names, values)
+        if not self._values_list: # we want models
+            return lambda rows: self._session_class._construct_instance(rows)
+        elif self._flat_values_list: # the user has requested flattened list (1 value per row)
+            return lambda row: row.popitem()[1]
         else:
-            columns = [self.model._columns[n] for n in names]
-            if self._flat_values_list:
-                return lambda values: columns[0].to_python(values[0])
-            else:
-                return lambda values: map(lambda (c, v): c.to_python(v), zip(columns, values))
+            return lambda row: self._get_row_value_list(self._only_fields, row)
 
     def __deepcopy__(self, memo):
         clone = self.__class__(self._session_instance, self._session_class)
@@ -867,14 +873,16 @@ def verify(*models, **kwargs):
         results[model] = VerifyResult(model)
 
     for keyspace, models in by_keyspace.items():
-        with connection_manager() as con:
-            query_result = con.execute(
-#                "SELECT columnfamily_name from system.schema_columnfamilies WHERE keyspace_name = :ks_name",
-                "SELECT columnfamily_name, key_aliases, key_validator, column_aliases, comparator from system.schema_columnfamilies WHERE keyspace_name = :ks_name",
-                {'ks_name': ks_name}
-            )
+        query_result = cqlengine.connection.session.execute(
+        "SELECT columnfamily_name, key_aliases, key_validator, column_aliases, comparator from system.schema_columnfamilies WHERE keyspace_name = %(ks_name)s",
+                {'ks_name': ks_name})
         tables = {}
-        for columnfamily_name, partition_keys, partition_key_types, primary_keys, primary_key_types in query_result.results:
+        for result in query_result:
+            columnfamily_name = result['columnfamily_name']
+            partition_keys = result['key_aliases']
+            partition_key_types = result['key_validator']
+            primary_keys = result['column_aliases']
+            primary_key_types = result['comparator']
             partition_keys = json.loads(partition_keys)
             if len(partition_keys) > 1:
                 partition_key_types = partition_key_types[len('org.apache.cassandra.db.marshal.CompositeType('):-1].split(',')[:len(partition_keys)]
@@ -975,13 +983,12 @@ def verify(*models, **kwargs):
             this_model_indexes = {col.db_field_name: col for name, col in model._columns.items() if col.index}
             if this_model_indexes:
                 model_indexes[model.column_family_name(include_keyspace=False)] = this_model_indexes
-        with connection_manager() as con:
-            _, idx_names = con.execute(
-                "SELECT index_name from system.\"IndexInfo\" WHERE table_name=:table_name",
-                {'table_name': model._get_keyspace()}
-            )
+        query_results = cqlengine.connection.session.execute(
+            "SELECT index_name from system.\"IndexInfo\" WHERE table_name=%(table_name)s",
+            {'table_name': model._get_keyspace()})
         cassandra_indexes = {}
-        for (idx,) in idx_names:
+        for result_dict in query_results:
+            idx = result_dict['index_name']
             try:
                 cf, index_name = idx.split('.')
                 look_for = 'index_{}_'.format(cf)

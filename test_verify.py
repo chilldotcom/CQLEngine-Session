@@ -4,7 +4,8 @@ import uuid
 from uuid import UUID
 
 from cqlengine import columns
-from cqlengine.connection import setup
+import cqlengine.connection
+from cqlengine.connection import get_cluster, setup
 from cqlengine.management import create_keyspace, delete_keyspace, sync_table
 from cqlengine.models import Model
 from cqlengine.query import DoesNotExist
@@ -79,11 +80,12 @@ class VerifyTest(unittest.TestCase):
         keyspace = 'testkeyspace{}'.format(str(uuid.uuid1()).replace('-', ''))
         self.keyspace = keyspace
         # Configure cqlengine's global connection pool.
-        setup(['localhost:9160'], default_keyspace=keyspace)
+        setup(['localhost'], default_keyspace=keyspace)
         create_keyspace(keyspace)
 
     def tearDown(self):
         delete_keyspace(self.keyspace)
+        get_cluster().shutdown()
 
     def test_has_extra_field(self):
         Foo = make_model(table_name='foo_bar')
