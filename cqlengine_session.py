@@ -212,7 +212,7 @@ class Session(object):
                 ))
             params = statement.get_context()
             statement = SimpleStatement(str(statement))
-            cqlengine.connection.session.execute(statement, params)
+            cqlengine.connection.get_session().execute(statement, params)
             del update._dirties
 #            for delete in self.deletes:
 #                raise NotImplementedError
@@ -873,7 +873,7 @@ def verify(*models, **kwargs):
         results[model] = VerifyResult(model)
 
     for keyspace, models in by_keyspace.items():
-        query_result = cqlengine.connection.session.execute(
+        query_result = cqlengine.connection.get_session().execute(
         "SELECT columnfamily_name, key_aliases, key_validator, column_aliases, comparator from system.schema_columnfamilies WHERE keyspace_name = %(ks_name)s",
                 {'ks_name': ks_name})
         tables = {}
@@ -983,7 +983,7 @@ def verify(*models, **kwargs):
             this_model_indexes = {col.db_field_name: col for name, col in model._columns.items() if col.index}
             if this_model_indexes:
                 model_indexes[model.column_family_name(include_keyspace=False)] = this_model_indexes
-        query_results = cqlengine.connection.session.execute(
+        query_results = cqlengine.connection.get_session().execute(
             "SELECT index_name from system.\"IndexInfo\" WHERE table_name=%(table_name)s",
             {'table_name': model._get_keyspace()})
         cassandra_indexes = {}
