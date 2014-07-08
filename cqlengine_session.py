@@ -2,17 +2,17 @@
 CQLEngine-Session
 
 Your cqlengine model must inherit from cqlengine_session.SessionModel instead
-of cqlengine.model.BaseModel
+of cqlengine.model.Model
 
 SessionModel will replace youl SessionModel declarations with classes of type
-IdMapModel.  Your model module will get classes of type BaseModel with an
+IdMapModel.  Your model module will get classes of type Model with an
 underscore prefixed to the name.
 
 example:
 class Foo(SessionModel):
     pass
 
-results in Foo being a IdMapModel, and _Foo being a BaseModel.
+results in Foo being a IdMapModel, and _Foo being a Model.
 
 Note that making blind handles requires you pass a key.
 blind = Foo(key)
@@ -38,7 +38,7 @@ from cqlengine import columns
 import cqlengine.connection
 from cqlengine.exceptions import ValidationError
 from cqlengine.management import get_fields, sync_table
-from cqlengine.models import BaseModel, ColumnQueryEvaluator, ModelMetaClass
+from cqlengine.models import ColumnQueryEvaluator, Model, ModelMetaClass
 from cqlengine.operators import EqualsOperator
 from cqlengine.query import BatchQuery, ModelQuerySet
 from cqlengine.statements import WhereClause, SelectStatement, DeleteStatement, UpdateStatement, AssignmentClause, InsertStatement, BaseCQLStatement, MapUpdateClause, MapDeleteClause, ListUpdateClause, SetUpdateClause, CounterUpdateClause
@@ -269,7 +269,7 @@ class SessionModelMetaClass(ModelMetaClass):
 
 
 # declare your models with this so that SessionModelMetaClass is the metaclass.
-class SessionModel(BaseModel):
+class SessionModel(Model):
     __abstract__ = True
     __metaclass__ = SessionModelMetaClass
 
