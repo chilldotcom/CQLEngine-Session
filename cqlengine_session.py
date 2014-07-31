@@ -178,7 +178,6 @@ class Session(object):
         # It would seem that batch does not work with counter?
         #with BatchQuery() as batch:
         for create in counter_creates:
-            print 'xxx create'
             primary_key_names = create.id_mapped_class._primary_keys.keys()
             arg = {name: getattr(create, name) for name in primary_key_names}
             instance = create.id_mapped_class.create(**arg)
@@ -199,12 +198,6 @@ class Session(object):
                 clause = CounterUpdateClause(col.db_field_name, value, 0, column=col)
                 statement.add_assignment_clause(clause)
             for name, col in update.id_mapped_class._primary_keys.items():
-                print WhereClause(
-                    col.db_field_name,
-                    EqualsOperator(),
-                    col.to_database(getattr(update, name))
-                )
-                print getattr(update, name)
                 statement.add_where_clause(WhereClause(
                     col.db_field_name,
                     EqualsOperator(),
